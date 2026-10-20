@@ -775,33 +775,7 @@ function loadStoreProducts(){
     };
   });
 }
-/* ===== EXEMPLOS TEMPORÁRIOS — apenas para visualizar o layout com foto/tamanho/preço.
-   Remova este array (e o "...demoProducts," logo abaixo) quando cadastrar peças reais no painel. ===== */
-const demoProducts = [
-  {
-    cat:'basicas', tag:'Exemplo', name:'Camiseta Fiel — Preta',
-    desc:'Algodão penteado, corte reto, bordado discreto da cruz no peito.',
-    price:'R$ 89,90', stock: 12,
-    svg:'<circle cx="50" cy="50" r="28" stroke="#f3ede1" stroke-width="2" fill="none"/>',
-    images:[
-      'https://placehold.co/500x500/070706/f3ede1?text=Frente&font=montserrat',
-      'https://placehold.co/500x500/1a1917/f3ede1?text=Costas&font=montserrat',
-      'https://placehold.co/500x500/070706/b9ae98?text=Detalhe&font=montserrat',
-    ],
-    sizes:[{label:'P',stock:3},{label:'M',stock:5},{label:'G',stock:3},{label:'GG',stock:1}],
-  },
-  {
-    cat:'basicas', tag:'Exemplo', name:'Camiseta Esperança — Off-White',
-    desc:'Malha macia, silk artesanal com a invocação "Quis ut Deus".',
-    price:'R$ 94,90', stock: 7,
-    svg:'<circle cx="50" cy="50" r="28" stroke="#f3ede1" stroke-width="2" fill="none"/>',
-    images:[
-      'https://placehold.co/500x500/f3ede1/070706?text=Frente&font=montserrat',
-      'https://placehold.co/500x500/e8e0d0/070706?text=Costas&font=montserrat',
-    ],
-    sizes:[{label:'P',stock:3},{label:'M',stock:5},{label:'G',stock:3},{label:'GG',stock:1}],
-  },
-];
+const demoProducts = [];
 const products = [...demoProducts, ...loadStoreProducts()];
 
 const grid = document.getElementById('grid');
