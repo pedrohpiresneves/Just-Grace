@@ -572,13 +572,12 @@
 
 <section class="cat-head reveal" id="catalogo">
   <div class="eyebrow">Catálogo</div>
-  <p>Camisas básicas e kits Duo Pima em algodão de fibra longa — cada peça vem com uma pequena reflexão sobre a invocação ou a oração que a inspira.</p>
+  <p>Camisas básicas em algodão de fibra longa — cada peça vem com uma pequena reflexão sobre a invocação ou a oração que a inspira.</p>
 </section>
 
 <div class="tabs reveal" id="tabs">
   <button class="tab active" data-cat="all">Tudo</button>
   <button class="tab" data-cat="basicas">Camisas Básicas</button>
-  <button class="tab" data-cat="duopima">Duo Pima</button>
 </div>
 
 <section style="padding-top:0;">
@@ -801,22 +800,6 @@ const demoProducts = [
       'https://placehold.co/500x500/e8e0d0/070706?text=Costas&font=montserrat',
     ],
     sizes:[{label:'P',stock:3},{label:'M',stock:5},{label:'G',stock:3},{label:'GG',stock:1}],
-  },
-  {
-    cat:'duopima', tag:'Exemplo', name:'Duo Pima Devoção — Preto & Cru',
-    desc:'Kit com duas camisetas em algodão pima, bordado minimalista "JG".',
-    price:'R$ 149,90', stock: 5,
-    svg:'<circle cx="50" cy="50" r="28" stroke="#f3ede1" stroke-width="2" fill="none"/>',
-    images:['https://placehold.co/500x500/1a1917/f3ede1?text=Duo+Pima&font=montserrat'],
-    sizes:[{label:'P',stock:3},{label:'M',stock:5},{label:'G',stock:3},{label:'GG',stock:1}],
-  },
-  {
-    cat:'duopima', tag:'Exemplo', name:'Duo Pima Graça — Off-White & Preto',
-    desc:'Edição limitada, tecido pima 100% penteado, caimento superior.',
-    price:'R$ 159,90', stock: 0,
-    svg:'<circle cx="50" cy="50" r="28" stroke="#f3ede1" stroke-width="2" fill="none"/>',
-    images:['https://placehold.co/500x500/f3ede1/070706?text=Duo+Pima+2&font=montserrat'],
-    sizes:[{label:'P',stock:0},{label:'M',stock:0},{label:'G',stock:0},{label:'GG',stock:0}],
   },
 ];
 const products = [...demoProducts, ...loadStoreProducts()];
