@@ -189,7 +189,14 @@
     }
   }
   function write(key, value){
-    localStorage.setItem(key, JSON.stringify(value));
+    try{
+      localStorage.setItem(key, JSON.stringify(value));
+    }catch(err){
+      console.warn('Just Grace: armazenamento do navegador cheio.', err);
+      if(typeof window !== 'undefined' && window.alert && key.indexOf('product') !== -1){
+        window.alert('O armazenamento do navegador está cheio. Remova fotos pesadas de alguns produtos ou use fotos menores.');
+      }
+    }
   }
 
   function uid(prefix){
