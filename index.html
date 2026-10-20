@@ -288,28 +288,6 @@
     opacity:0; animation: heroUp .9s cubic-bezier(.16,.8,.24,1) forwards;
     animation-delay:.28s;
   }
-  #siteIntro{
-    position:fixed !important; top:0 !important; right:0 !important; bottom:0 !important; left:0 !important;
-    width:100vw !important; height:100vh !important; height:100dvh !important; z-index:2147483647;
-    background: #171718;
-    overflow:hidden; margin:0; padding:0;
-    transition: opacity .6s ease;
-  }
-  #siteIntro.is-hidden{ opacity:0; pointer-events:none; }
-  #siteIntro video{
-    position:absolute !important; top:0 !important; right:0 !important; bottom:0 !important; left:0 !important;
-    width:100% !important; height:100% !important; max-width:none; max-height:none;
-    object-fit:contain; object-position:center; display:block; margin:0; padding:0; background:#171718;
-  }
-  #siteIntroSkip{
-    position:fixed; right:20px; bottom:20px; z-index:100000;
-    color: var(--muted); background:transparent; border:1px solid var(--panel-line);
-    padding:8px 16px; font-size:0.78rem; letter-spacing:.06em; text-transform:uppercase;
-    cursor:pointer; font-family: 'Jost', sans-serif;
-    transition: color .2s, border-color .2s;
-  }
-  #siteIntroSkip:hover{ color: var(--ivory); border-color: var(--ivory); }
-  body.intro-active{ overflow:hidden; }
   .hero .eyebrow, .hero h1, .hero p, .hero-cta, .hero-verse{
     opacity:0; animation: heroUp .9s cubic-bezier(.16,.8,.24,1) forwards;
   }
@@ -547,12 +525,7 @@
   }
 </style>
 </head>
-<body class="intro-active">
-
-<div id="siteIntro" aria-hidden="true">
-  <video autoplay muted playsinline webkit-playsinline="true" disablepictureinpicture disableRemotePlayback preload="auto" poster="logo-mark.jpg" src="logo-animation.mp4"></video>
-</div>
-<button id="siteIntroSkip" type="button">Pular</button>
+<body>
 
 <div class="grain"></div>
 
@@ -1400,72 +1373,6 @@ document.addEventListener('click', e=>{
     return;
   }
 });
-</script>
-<script>
-(function(){
-  const intro = document.getElementById('siteIntro');
-  const skipBtn = document.getElementById('siteIntroSkip');
-  const video = intro ? intro.querySelector('video') : null;
-  let finished = false;
-
-  function endIntro(){
-    if(finished) return;
-    finished = true;
-    if(intro){ intro.classList.add('is-hidden'); }
-    if(skipBtn){ skipBtn.style.display = 'none'; }
-    document.body.classList.remove('intro-active');
-    window.setTimeout(function(){ if(intro && intro.parentNode) intro.parentNode.removeChild(intro); }, 700);
-  }
-
-  if(video){
-    video.muted = true;
-    video.defaultMuted = true;
-    video.playsInline = true;
-    video.setAttribute('muted', '');
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-
-    const tryPlay = function(){
-      const p = video.play();
-      if(p && typeof p.catch === 'function'){
-        p.catch(function(){
-          // alguns navegadores/webviews só liberam o play após qualquer toque na tela;
-          // isso NÃO exibe nenhum botão, apenas aproveita o primeiro toque do usuário
-          const resume = function(){
-            video.muted = true;
-            video.play().catch(function(){});
-            document.removeEventListener('touchstart', resume, true);
-            document.removeEventListener('touchend', resume, true);
-            document.removeEventListener('click', resume, true);
-            document.removeEventListener('pointerdown', resume, true);
-          };
-          document.addEventListener('touchstart', resume, {once:true, passive:true, capture:true});
-          document.addEventListener('touchend', resume, {once:true, passive:true, capture:true});
-          document.addEventListener('click', resume, {once:true, capture:true});
-          document.addEventListener('pointerdown', resume, {once:true, capture:true});
-        });
-      }
-    };
-    tryPlay();
-    video.addEventListener('loadedmetadata', tryPlay);
-    video.addEventListener('loadeddata', tryPlay);
-    video.addEventListener('canplay', tryPlay);
-    video.addEventListener('canplaythrough', tryPlay);
-    window.addEventListener('load', tryPlay);
-    document.addEventListener('DOMContentLoaded', tryPlay);
-    window.setTimeout(tryPlay, 50);
-    window.setTimeout(tryPlay, 300);
-    window.setTimeout(tryPlay, 800);
-
-    video.addEventListener('ended', endIntro);
-    // segurança: se o vídeo não carregar/tocar, libera a loja mesmo assim
-    video.addEventListener('error', endIntro);
-    window.setTimeout(endIntro, 9000);
-  } else {
-    endIntro();
-  }
-  if(skipBtn){ skipBtn.addEventListener('click', endIntro); }
-})();
 </script>
 </body>
 </html>
