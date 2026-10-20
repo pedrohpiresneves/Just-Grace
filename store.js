@@ -388,6 +388,7 @@
     syncOrders: pullOrdersFromServer,
     syncCustomers: pullCustomersFromServer,
     syncWaitlist: pullWaitlistFromServer,
+    SYNC_CONFIG: SYNC_CONFIG,
     syncProducts: pullProductsFromServer,
     syncDelivery: pullDeliveryFromServer,
     syncExpenses: pullExpensesFromServer,

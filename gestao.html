@@ -697,34 +697,66 @@ function openProductModal(product){
     fImageFile.value = '';
   });
 
+  function shrinkCanvas(canvas, startQ, limit){
+    let q = startQ, url = canvas.toDataURL('image/jpeg', q), n = 0;
+    while(url.length > limit && n < 25){
+      q = Math.max(0.3, q - 0.05);
+      url = canvas.toDataURL('image/jpeg', q);
+      n++;
+    }
+    return url.length > limit ? null : url;
+  }
+
+  async function uploadPhotoToDrive(dataUrl){
+    const cfg = (S.SYNC_CONFIG || {});
+    const api = cfg.apiUrl, token = cfg.token;
+    if(!api || !token) throw new Error('sync não configurado');
+    const res = await fetch(api, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token, action: 'uploadImage', dataUrl }),
+    });
+    const data = await res.json();
+    if(!data || !data.url) throw new Error((data && data.error) || 'falha no envio');
+    return data.url;
+  }
+
   function compressAndAddPhoto(file){
     const reader = new FileReader();
     reader.onload = (ev)=>{
       const img = new Image();
-      img.onload = ()=>{
-        const maxDim = 1400;
-        let w = img.width, h = img.height;
-        if(w >= h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
-        else if(h > w && h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#070706';
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        let quality = 0.88;
-        let dataUrl = canvas.toDataURL('image/jpeg', quality);
-        let attempts = 0;
-        while(dataUrl.length > 90000 && attempts < 20){
-          quality = Math.max(0.25, quality - 0.05);
-          dataUrl = canvas.toDataURL('image/jpeg', quality);
-          attempts++;
+      img.onload = async ()=>{
+        const render = (maxDim)=>{
+          let w = img.width, h = img.height;
+          if(w >= h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+          else if(h > w && h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#070706';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          return canvas;
+        };
+        // 1) tenta enviar em alta qualidade para o Google Drive (sem limite de tamanho da planilha)
+        try{
+          const big = shrinkCanvas(render(1800), 0.9, 2500000);
+          if(big){
+            const url = await uploadPhotoToDrive(big);
+            productImages.push(url);
+            renderPhotoPreviews();
+            return;
+          }
+        }catch(err){
+          console.warn('Envio ao Drive falhou, usando foto reduzida.', err);
         }
-        if(dataUrl.length > 90000){
+        // 2) plano B: foto menor guardada direto no produto
+        const small = shrinkCanvas(render(1400), 0.88, 90000);
+        if(!small){
           alert('Uma das imagens ficou grande demais mesmo comprimida. Tente uma foto mais simples.');
           return;
         }
-        productImages.push(dataUrl);
+        productImages.push(small);
         renderPhotoPreviews();
       };
       img.onerror = ()=> alert('Não foi possível ler uma das imagens. Tente um arquivo JPG ou PNG.');
