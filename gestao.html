@@ -748,12 +748,17 @@ function openProductModal(product){
             return;
           }
         }catch(err){
+          window.__driveErr = String(err && err.message || err);
           console.warn('Envio ao Drive falhou, usando foto reduzida.', err);
         }
         // 2) plano B: foto menor guardada direto no produto
-        const small = shrinkCanvas(render(1400), 0.88, 90000);
+        let small = null;
+        for(const d of [1400, 1100, 900, 700, 550]){
+          small = shrinkCanvas(render(d), 0.85, 90000);
+          if(small) break;
+        }
         if(!small){
-          alert('Uma das imagens ficou grande demais mesmo comprimida. Tente uma foto mais simples.');
+          alert('Não foi possível enviar a foto ao Google Drive' + (window.__driveErr ? ' (' + window.__driveErr + ')' : '') + ' e ela ficou grande demais para guardar no produto. Confira se o Apps Script foi atualizado e autorizado.');
           return;
         }
         productImages.push(small);
