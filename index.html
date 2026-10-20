@@ -776,7 +776,7 @@ function loadStoreProducts(){
   });
 }
 const demoProducts = [];
-const products = [...demoProducts, ...loadStoreProducts()];
+let products = [...demoProducts, ...loadStoreProducts()];
 
 const grid = document.getElementById('grid');
 
@@ -851,6 +851,19 @@ function render(filter){
 }
 render('all');
 observeReveals(document);
+
+/* Busca o catálogo e os fretes atualizados na nuvem (Google Sheets), para que
+   celular e computador sempre mostrem o que foi salvo no painel de gestão. */
+(function syncCatalogFromCloud(){
+  if(!window.JGStore || !JGStore.syncProducts) return;
+  const activeTab = ()=> (document.querySelector('.tab.active') || {dataset:{cat:'all'}}).dataset.cat || 'all';
+  JGStore.syncProducts().then(list=>{
+    if(!list) return;
+    products = [...demoProducts, ...loadStoreProducts()];
+    render(activeTab());
+  }).catch(()=>{});
+  if(JGStore.syncDelivery) JGStore.syncDelivery().catch(()=>{});
+})();
 
 /* ---- carrossel de fotos do produto ---- */
 function setCarouselIndex(carousel, index){
