@@ -587,8 +587,8 @@ function attachProductCardEvents(root){
 function openProductModal(product){
   const isNew = !product;
   const p = product || { id:S.uid('p'), cat:'basicas', tag:'Camiseta', name:'', desc:'', priceCents:0, status:'active', sku:'', svg:'<circle cx="50" cy="50" r="28" stroke="#f3ede1" stroke-width="2" fill="none"/>', images:[], sizes:[] };
-  let productImages = (p.images && p.images.length ? p.images.slice() : (p.image ? [p.image] : [])).slice(0, 4);
-  const MAX_PHOTOS = 4;
+  let productImages = (p.images && p.images.length ? p.images.slice() : (p.image ? [p.image] : [])).slice(0, 8);
+  const MAX_PHOTOS = 8;
 
   function renderPhotoPreviews(){
     const wrap = document.getElementById('fImagesWrap');
@@ -629,7 +629,7 @@ function openProductModal(product){
           </select>
         </div>
         <div class="field wide">
-          <label>Fotos Do Produto (até 4 — JPG ou PNG) — <span id="fPhotoCount">0/4</span></label>
+          <label>Fotos Do Produto (até 8 — JPG ou PNG) — <span id="fPhotoCount">0/8</span></label>
           <div id="fImagesWrap" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;"></div>
           <input type="file" id="fImageFile" accept="image/jpeg,image/png" multiple>
         </div>
@@ -689,7 +689,7 @@ function openProductModal(product){
     const files = Array.from(fImageFile.files || []);
     const slotsLeft = MAX_PHOTOS - productImages.length;
     if(slotsLeft <= 0){
-      alert('Você já tem 4 fotos. Remova alguma antes de adicionar outra.');
+      alert('Você já tem 8 fotos. Remova alguma antes de adicionar outra.');
       fImageFile.value = '';
       return;
     }
@@ -702,7 +702,7 @@ function openProductModal(product){
     reader.onload = (ev)=>{
       const img = new Image();
       img.onload = ()=>{
-        const maxDim = 700;
+        const maxDim = 1000;
         let w = img.width, h = img.height;
         if(w >= h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
         else if(h > w && h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
@@ -712,15 +712,15 @@ function openProductModal(product){
         ctx.fillStyle = '#070706';
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
-        let quality = 0.72;
+        let quality = 0.82;
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
         let attempts = 0;
-        while(dataUrl.length > 10000 && attempts < 8){
-          quality = Math.max(0.25, quality - 0.08);
+        while(dataUrl.length > 38000 && attempts < 14){
+          quality = Math.max(0.25, quality - 0.05);
           dataUrl = canvas.toDataURL('image/jpeg', quality);
           attempts++;
         }
-        if(dataUrl.length > 10000){
+        if(dataUrl.length > 38000){
           alert('Uma das imagens ficou grande demais mesmo comprimida. Tente uma foto mais simples.');
           return;
         }
