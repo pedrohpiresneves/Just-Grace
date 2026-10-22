@@ -448,7 +448,7 @@
   }
   .card-body{ padding:26px 24px 28px; flex:1; display:flex; flex-direction:column;}
   .card-body h3{ font-size:1.4rem; color:var(--ivory); margin-bottom:8px; font-weight:500; }
-  .card-body .desc{ font-size:0.9rem; color:var(--muted); line-height:1.65; flex:1; margin-bottom:20px;}
+  .card-body .desc{ font-size:0.9rem; color:var(--muted); line-height:1.65; flex:1; margin-bottom:20px; white-space:pre-wrap; overflow-wrap:anywhere;}
   .card-foot{ display:flex; align-items:center; justify-content:space-between; }
   .price{ font-family:'Cormorant Garamond', serif; font-size:1.3rem; color:var(--gold-bright); font-style:italic;}
   .add-btn{
@@ -837,7 +837,7 @@ function render(filter){
       </div>
       <div class="card-body">
         <h3>${p.name}</h3>
-        <p class="desc">${p.desc}</p>
+        <p class="desc">${String(p.desc||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
         ${sizeRow}
         <div class="card-foot">
           <span class="price">${p.price}</span>
