@@ -551,6 +551,7 @@ function productCardHTML(p, withActions){
       <h4>${escapeHtml(p.name)}</h4>
       <div class="meta">${escapeHtml(p.tag)} · ${escapeHtml(p.sku||'')}</div>
       <div class="price">${money(p.priceCents)}</div>
+      ${p.costCents ? `<div class="meta">Custo: ${money(p.costCents)} · Lucro: ${money(p.priceCents - p.costCents)} (${p.priceCents ? Math.round((p.priceCents - p.costCents) / p.priceCents * 100) : 0}%)</div>` : `<div class="meta">Custo: não informado</div>`}
       <div class="stock-row">
         <span class="stock-pill ${stockClass}">${stockLabel}</span>
         <b>${total} un.</b>
@@ -621,6 +622,7 @@ function openProductModal(product){
         </div>
         <div class="field"><label>Etiqueta</label><input id="fTag" value="${escapeAttr(p.tag)}" placeholder="Camiseta"></div>
         <div class="field"><label>Preço (R$)</label><input id="fPrice" type="number" min="0" step="0.01" value="${isNew ? '' : (p.priceCents/100).toFixed(2)}" placeholder="0,00"></div>
+        <div class="field"><label>Custo do produto (R$)</label><input id="fCost" type="number" min="0" step="0.01" value="${p.costCents ? (p.costCents/100).toFixed(2) : ''}" placeholder="0,00"></div>
         <div class="field"><label>SKU</label><input id="fSku" value="${escapeAttr(p.sku||'')}" placeholder="JG-BAS-004"></div>
         <div class="field"><label>Status</label>
           <select id="fStatus">
@@ -790,6 +792,7 @@ function openProductModal(product){
       cat: document.getElementById('fCat').value,
       tag: document.getElementById('fTag').value.trim() || 'Camiseta',
       priceCents: Math.round(Number(document.getElementById('fPrice').value||0)*100),
+      costCents: Math.round(Number(document.getElementById('fCost').value||0)*100),
       sku: document.getElementById('fSku').value.trim(),
       status: document.getElementById('fStatus').value,
       images: productImages.slice(),
