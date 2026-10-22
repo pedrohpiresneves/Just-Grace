@@ -490,6 +490,7 @@ function renderDashboard(body){
   const out = active.filter(p=>S.productTotalStock(p)===0).length;
   const revenue = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).reduce((s,o)=>s+o.totalCents,0);
   const pendingContact = orders.filter(o=>needsFollowUp(o)).length;
+  const pf = calcProfit(orders);
 
   body.innerHTML = `
     <div class="kpi-grid">
@@ -497,7 +498,8 @@ function renderDashboard(body){
       <div class="kpi"><span>Estoque Baixo</span><strong>${low}</strong><small>até 3 peças</small></div>
       <div class="kpi"><span>Esgotados</span><strong>${out}</strong><small>precisam de atenção</small></div>
       <div class="kpi"><span>Pedidos</span><strong>${orders.length}</strong><small>recebidos no total</small></div>
-      <div class="kpi"><span>Faturamento</span><strong>${money(revenue)}</strong><small>pedidos pagos</small></div>
+      <div class="kpi"><span>Faturamento</span><strong>${money(revenue)}</strong><small>pedidos pagos, com frete</small></div>
+      <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>inclui ${money(pf.delivery)} de frete · custo dos produtos ${money(pf.cost)}</small></div>
       <div class="kpi"><span>Clientes</span><strong>${customers.length}</strong><small>cadastrados</small></div>
     </div>
     ${pendingContact ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há ${pendingContact} pedido(s) sem pagamento ou contato concluído há mais de 15 minutos.</div>` : ''}
@@ -512,6 +514,24 @@ function renderDashboard(body){
   `;
   attachOrderRowEvents(body);
   attachProductCardEvents(body);
+}
+
+const PAID_STATUSES = ['paid','preparing','shipped','fulfilled'];
+/* Custo dos produtos de um pedido (custo cadastrado no produto × quantidade). */
+function orderProductCostCents(order){
+  const prods = S.getProducts();
+  return (order.items||[]).reduce((s,i)=>{
+    const p = prods.find(x=>x.id===i.productId) || prods.find(x=>x.name===i.name);
+    return s + ((p && p.costCents) || 0) * (i.quantity ?? i.qty ?? 0);
+  }, 0);
+}
+/* Lucro = total pago pelo cliente (produtos + FRETE − desconto) − custo dos produtos. */
+function calcProfit(orders){
+  const paid = orders.filter(o=>PAID_STATUSES.includes(o.status));
+  const revenue = paid.reduce((s,o)=>s+(o.totalCents||0),0);
+  const delivery = paid.reduce((s,o)=>s+(o.deliveryFeeCents ?? o.deliveryCents ?? 0),0);
+  const cost = paid.reduce((s,o)=>s+orderProductCostCents(o),0);
+  return { revenue, delivery, cost, profit: revenue - cost };
 }
 
 function needsFollowUp(order){
@@ -886,8 +906,8 @@ function openOrderModal(order){
       <table class="order-items-table">
         ${order.items.map(i=>`<tr><td>${escapeHtml(i.name)}<br><small style="color:var(--muted)">${i.quantity} × ${money(i.unitPriceCents)}</small></td><td>${money(i.quantity*i.unitPriceCents)}</td></tr>`).join('')}
       </table>
-      <div class="totals-row"><span>Subtotal</span><b>${money(order.subtotalCents)}</b></div>
-      <div class="totals-row"><span>Frete</span><b>${money(order.deliveryCents)}</b></div>
+      <div class="totals-row"><span>Subtotal</span><b>${money(order.subtotalCents ?? order.productsCents ?? 0)}</b></div>
+      <div class="totals-row"><span>Frete</span><b>${money(order.deliveryFeeCents ?? order.deliveryCents ?? 0)}</b></div>
       <div class="totals-row grand"><span>Total</span><b>${money(order.totalCents)}</b></div>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Linha do tempo</h3>
       ${(order.events||[]).map(e=>`<div class="timeline-item"><b>${escapeHtml(e.label)}</b><small>${escapeHtml(e.actor)} · ${new Date(e.createdAt).toLocaleString('pt-BR')}</small></div>`).join('')}
