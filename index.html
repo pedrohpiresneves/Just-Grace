@@ -440,7 +440,14 @@
   }
   .size-btn:hover{ border-color:var(--gold); color:var(--ivory); }
   .size-btn.selected{ border-color:var(--gold-bright); color:var(--gold-bright); background:rgba(243,237,225,0.06); }
-  .size-btn:disabled{ opacity:0.3; cursor:not-allowed; text-decoration:line-through; }
+  .size-btn:disabled{ opacity:0.5; cursor:not-allowed; text-decoration:none; position:relative; overflow:hidden; }
+  /* tamanho esgotado: "X" desenhado por cima da letra */
+  .size-btn:disabled::before, .size-btn:disabled::after{
+    content:''; position:absolute; left:50%; top:50%; width:140%; height:1px;
+    background:var(--muted); pointer-events:none;
+  }
+  .size-btn:disabled::before{ transform:translate(-50%,-50%) rotate(45deg); }
+  .size-btn:disabled::after{ transform:translate(-50%,-50%) rotate(-45deg); }
   .size-btn:disabled:hover{ border-color:var(--panel-line); color:var(--muted); }
   .card-tag{
     position:absolute; top:16px; left:16px; font-size:0.65rem; letter-spacing:0.16em;
