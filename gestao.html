@@ -490,7 +490,9 @@ function renderDashboard(body){
   const out = active.filter(p=>S.productTotalStock(p)===0).length;
   const revenue = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).reduce((s,o)=>s+o.totalCents,0);
   const pendingContact = orders.filter(o=>needsFollowUp(o)).length;
-  const pf = calcProfit(orders);
+  const expensesAll = S.getExpenses();
+  const pf = calcProfit(orders, expensesAll);
+  const series = monthlySeries(orders, expensesAll);
 
   body.innerHTML = `
     <div class="kpi-grid">
@@ -499,8 +501,17 @@ function renderDashboard(body){
       <div class="kpi"><span>Esgotados</span><strong>${out}</strong><small>precisam de atenção</small></div>
       <div class="kpi"><span>Pedidos</span><strong>${orders.length}</strong><small>recebidos no total</small></div>
       <div class="kpi"><span>Faturamento</span><strong>${money(revenue)}</strong><small>pedidos pagos, com frete</small></div>
-      <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>inclui ${money(pf.delivery)} de frete · custo dos produtos ${money(pf.cost)}</small></div>
+      <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>faturamento (com ${money(pf.delivery)} de frete) − custo dos produtos ${money(pf.cost)} − despesas ${money(pf.expenses)}</small></div>
       <div class="kpi"><span>Clientes</span><strong>${customers.length}</strong><small>cadastrados</small></div>
+    </div>
+    <div class="panel-block">
+      <h3>Faturamento, Custos E Lucro — Últimos 6 Meses</h3>
+      ${profitChartSVG(series)}
+      <div style="display:flex; gap:18px; flex-wrap:wrap; font-size:0.8rem; margin-top:8px; color:var(--muted);">
+        <span><i style="display:inline-block;width:10px;height:10px;background:#b08d5b;border-radius:2px;margin-right:6px;"></i>Faturamento (com frete)</span>
+        <span><i style="display:inline-block;width:10px;height:10px;background:#8a8578;border-radius:2px;margin-right:6px;"></i>Custo dos produtos + despesas</span>
+        <span><i style="display:inline-block;width:10px;height:10px;background:#6fae7f;border-radius:2px;margin-right:6px;"></i>Lucro</span>
+      </div>
     </div>
     ${pendingContact ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há ${pendingContact} pedido(s) sem pagamento ou contato concluído há mais de 15 minutos.</div>` : ''}
     <div class="panel-block">
@@ -525,13 +536,71 @@ function orderProductCostCents(order){
     return s + ((p && p.costCents) || 0) * (i.quantity ?? i.qty ?? 0);
   }, 0);
 }
-/* Lucro = total pago pelo cliente (produtos + FRETE − desconto) − custo dos produtos. */
-function calcProfit(orders){
+/* Lucro = total pago pelo cliente (produtos + FRETE − desconto) − custo dos produtos − despesas lançadas no Financeiro. */
+function calcProfit(orders, expenses){
   const paid = orders.filter(o=>PAID_STATUSES.includes(o.status));
   const revenue = paid.reduce((s,o)=>s+(o.totalCents||0),0);
   const delivery = paid.reduce((s,o)=>s+(o.deliveryFeeCents ?? o.deliveryCents ?? 0),0);
   const cost = paid.reduce((s,o)=>s+orderProductCostCents(o),0);
-  return { revenue, delivery, cost, profit: revenue - cost };
+  const exp = (expenses||[]).reduce((s,e)=>s+(e.amountCents||0),0);
+  return { revenue, delivery, cost, expenses: exp, profit: revenue - cost - exp };
+}
+
+/* Série dos últimos 6 meses para o gráfico do dashboard. */
+function monthlySeries(orders, expenses, n=6){
+  const now = new Date();
+  const months = [];
+  for(let i=n-1;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push({ key: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),
+                  label: d.toLocaleDateString('pt-BR',{month:'short'}).replace('.',''), revenue:0, outflow:0 });
+  }
+  const byKey = Object.fromEntries(months.map(m=>[m.key,m]));
+  orders.filter(o=>PAID_STATUSES.includes(o.status)).forEach(o=>{
+    const m = byKey[(o.createdAt||'').slice(0,7)]; if(!m) return;
+    m.revenue += (o.totalCents||0);
+    m.outflow += orderProductCostCents(o);
+  });
+  (expenses||[]).forEach(e=>{
+    const m = byKey[(e.date||'').slice(0,7)]; if(!m) return;
+    m.outflow += (e.amountCents||0);
+  });
+  months.forEach(m=>m.profit = m.revenue - m.outflow);
+  return months;
+}
+
+function profitChartSVG(series){
+  const W=640, H=260, padL=56, padR=12, padT=16, padB=34;
+  const max = Math.max(1, ...series.flatMap(m=>[m.revenue, m.outflow, m.profit]));
+  const min = Math.min(0, ...series.map(m=>m.profit));
+  const range = max - min || 1;
+  const y = v => padT + (max - v) / range * (H - padT - padB);
+  const gw = (W - padL - padR) / series.length;
+  const bw = Math.min(26, gw / 4);
+  const fmt = c => 'R$ ' + (c/100).toLocaleString('pt-BR',{maximumFractionDigits:0});
+  let out = `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;" role="img" aria-label="Faturamento, saídas e lucro dos últimos 6 meses">`;
+  for(let i=0;i<=4;i++){
+    const v = min + range * i / 4, yy = y(v);
+    out += `<line x1="${padL}" x2="${W-padR}" y1="${yy}" y2="${yy}" stroke="currentColor" stroke-opacity=".12"/>`;
+    out += `<text x="${padL-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="currentColor" fill-opacity=".6">${fmt(v)}</text>`;
+  }
+  const zero = y(0);
+  series.forEach((m,i)=>{
+    const cx = padL + gw*i + gw/2;
+    const bars = [
+      {v:m.revenue, c:'#b08d5b', l:'Faturamento'},
+      {v:m.outflow, c:'#8a8578', l:'Custos + despesas'},
+      {v:m.profit,  c: m.profit>=0 ? '#6fae7f' : '#c96b5e', l:'Lucro'},
+    ];
+    bars.forEach((b,j)=>{
+      const x = cx + (j-1)*(bw+3) - bw/2;
+      const top = Math.min(y(b.v), zero), h = Math.max(1, Math.abs(y(b.v)-zero));
+      out += `<rect x="${x}" y="${top}" width="${bw}" height="${h}" fill="${b.c}" rx="2"><title>${m.label} · ${b.l}: ${money(b.v)}</title></rect>`;
+    });
+    out += `<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".75">${m.label}</text>`;
+  });
+  out += `<line x1="${padL}" x2="${W-padR}" y1="${zero}" y2="${zero}" stroke="currentColor" stroke-opacity=".35"/></svg>`;
+  return out;
 }
 
 function needsFollowUp(order){
@@ -1325,7 +1394,9 @@ function renderFinance(body, actions){
   const orders = S.getOrders();
   const revenueMonth = orders.filter(o => ['paid','preparing','shipped','fulfilled'].includes(o.status) && (o.createdAt||'').slice(0,7) === monthKey)
     .reduce((s,o)=> s + (o.totalCents||0), 0);
-  const netMonth = revenueMonth - totalMonth;
+  const costMonth = orders.filter(o => ['paid','preparing','shipped','fulfilled'].includes(o.status) && (o.createdAt||'').slice(0,7) === monthKey)
+    .reduce((s,o)=> s + orderProductCostCents(o), 0);
+  const netMonth = revenueMonth - costMonth - totalMonth;
 
   actions.innerHTML = can('finance_manage') ? `<button class="btn primary" id="newExpenseBtn">＋ Nova Despesa</button>` : '';
 
@@ -1333,7 +1404,7 @@ function renderFinance(body, actions){
     <div class="kpi-grid">
       <div class="kpi"><span>Custos Este Mês</span><strong>${money(totalMonth)}</strong><small>${thisMonth.length} lançamento(s)</small></div>
       <div class="kpi"><span>Faturamento Este Mês</span><strong>${money(revenueMonth)}</strong><small>pedidos pagos</small></div>
-      <div class="kpi"><span>Resultado Do Mês</span><strong style="color:${netMonth>=0?'var(--ok)':'var(--danger)'}">${money(netMonth)}</strong><small>faturamento − custos</small></div>
+      <div class="kpi"><span>Resultado Do Mês</span><strong style="color:${netMonth>=0?'var(--ok)':'var(--danger)'}">${money(netMonth)}</strong><small>faturamento − custo dos produtos − despesas</small></div>
       <div class="kpi"><span>Custos No Total</span><strong>${money(totalAll)}</strong><small>desde o início</small></div>
     </div>
     <div class="panel-block">
