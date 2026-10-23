@@ -132,8 +132,23 @@
           // proteção: nunca apaga dados locais válidos com uma resposta vazia
           // do servidor (evita perder tudo antes do primeiro envio, por ex.).
           // Reenvia o que já temos localmente, pra corrigir o servidor também.
-          pushListToServer(type, existing);
+          if(type === 'orders' || type === 'customers' || type === 'waitlist') pushMerge(type, existing, []);
+          else pushListToServer(type, existing);
           return existing;
+        }
+        if(type === 'orders' || type === 'customers' || type === 'waitlist'){
+          // nunca perde dados: o que existe só neste aparelho é devolvido ao servidor (cura pedidos que
+          // ficaram de fora) e mantido na lista local junto com o que veio do servidor.
+          const serverIds = {};
+          data[type].forEach(x => { if(x && x.id) serverIds[x.id] = 1; });
+          const localOnly = existing.filter(x => x && x.id && !serverIds[x.id]);
+          window.__jgServerCount = window.__jgServerCount || {};
+          window.__jgServerCount[type] = data[type].length;
+          const merged = data[type].concat(localOnly);
+          if(type !== 'customers') merged.sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+          write(key, merged);
+          if(localOnly.length) pushMerge(type, localOnly, []);
+          return merged;
         }
         write(key, data[type]);
         return data[type];
@@ -142,6 +157,104 @@
       console.warn('Just Grace: não foi possível buscar "' + type + '" do servidor.', err);
     }
     return null;
+  }
+
+  // Envia só o que mudou (novos/alterados/removidos) — o servidor mescla com o que já existe.
+  // Assim, vários clientes e o painel de gestão nunca apagam os pedidos uns dos outros.
+  function diffList(prev, next){
+    const prevMap = {};
+    (prev || []).forEach(x => { if(x && x.id) prevMap[x.id] = JSON.stringify(x); });
+    const nextIds = {};
+    const changed = [];
+    (next || []).forEach(x => {
+      if(!x || !x.id) return;
+      nextIds[x.id] = 1;
+      if(prevMap[x.id] !== JSON.stringify(x)) changed.push(x);
+    });
+    const removed = Object.keys(prevMap).filter(id => !nextIds[id]);
+    return { changed, removed };
+  }
+  // Envio "sobrevivente": usa fetch com keepalive (continua mesmo se o cliente fechar a página ou for
+  // para o WhatsApp/Mercado Pago logo em seguida). Se não houver suporte, cai no envio por formulário.
+  async function sendMergeRequest(fields){
+    try{
+      if(typeof fetch === 'function'){
+        await fetch(SYNC_CONFIG.apiUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          keepalive: true,
+          body: new URLSearchParams(fields),
+        });
+        return true;
+      }
+    }catch(err){ /* tenta o formulário */ }
+    return formPostRequest(SYNC_CONFIG.apiUrl, fields);
+  }
+
+  // Fila de pedidos ainda não confirmados no servidor (reenvio automático, sem risco de duplicar:
+  // o servidor atualiza pelo número do pedido).
+  const PENDING_KEY = 'jg_pending_orders';
+  function readPending(){ return read(PENDING_KEY, []); }
+  function writePending(list){ try{ localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }catch(e){} }
+  function queuePending(order, stock){
+    const list = readPending().filter(p => p.order.id !== order.id);
+    list.push({ order, stock: stock || [], at: Date.now() });
+    writePending(list);
+  }
+  let flushing = false;
+  async function flushPending(){
+    if(!isSyncConfigured() || flushing) return;
+    flushing = true;
+    try{ await flushPendingInner(); } finally { flushing = false; }
+  }
+  async function flushPendingInner(){
+    const pending = readPending();
+    if(!pending.length) return;
+    let serverOrders = null;
+    try{
+      const data = await jsonpRequest(SYNC_CONFIG.apiUrl + '?token=' + encodeURIComponent(SYNC_CONFIG.token) + '&type=orders', 20000);
+      if(data && Array.isArray(data.orders)) serverOrders = data.orders;
+    }catch(err){ return; }
+    if(!serverOrders) return;
+    const have = {};
+    serverOrders.forEach(o => { have[o.id] = 1; });
+    const still = [];
+    for(const p of pending){
+      if(have[p.order.id]) continue; // já está salvo no servidor
+      still.push(p);
+      // ainda não chegou: reenvia (sem baixar o estoque de novo — isso foi feito no 1º envio bem-sucedido)
+      await sendMergeRequest({
+        token: SYNC_CONFIG.token, type: 'merge', action: 'merge', target: 'orders',
+        items: JSON.stringify([p.order]), removed: '[]', stock: JSON.stringify(p.stock || []),
+      });
+    }
+    writePending(still);
+    if(still.length) setTimeout(flushPending, 15000);
+  }
+  async function pushMerge(target, items, removed, stock){
+    if(!isSyncConfigured()) return;
+    if(!(items && items.length) && !(removed && removed.length) && !(stock && stock.length)) return;
+    if(target === 'orders' && items && items.length === 1 && stock && stock.length) queuePending(items[0], stock);
+    try{
+      await sendMergeRequest({
+        token: SYNC_CONFIG.token,
+        type: 'merge',
+        action: 'merge',
+        target: target,
+        items: JSON.stringify(items || []),
+        removed: JSON.stringify(removed || []),
+        stock: JSON.stringify(stock || []),
+      });
+    }catch(err){
+      console.warn('Just Grace: não foi possível sincronizar "' + target + '" com o servidor.', err);
+    }
+    if(target === 'orders' && stock && stock.length) setTimeout(flushPending, 8000);
+  }
+  function saveMerged(key, target, list){
+    const prev = read(key, []);
+    write(key, list);
+    const d = diffList(prev, list);
+    return pushMerge(target, d.changed, d.removed);
   }
 
   const pushOrdersToServer    = (list) => pushListToServer('orders', list);
@@ -242,6 +355,10 @@
       }
     });
     return 'PED-' + String(max + 1).padStart(4, '0');
+  }
+  // id único para pedidos da loja: dois clientes em aparelhos diferentes nunca geram o mesmo número
+  function storeOrderId(){
+    return 'PED-' + String(Math.floor(Date.now()/1000) % 1000000).padStart(6, '0');
   }
   function nowISO(){ return new Date().toISOString(); }
   function money(cents){
@@ -361,15 +478,15 @@
 
     // pedidos
     getOrders(){ return read(KEYS.orders, []); },
-    saveOrders(list){ write(KEYS.orders, list); pushOrdersToServer(list); },
+    saveOrders(list){ return saveMerged(KEYS.orders, 'orders', list); },
 
     // clientes
     getCustomers(){ return read(KEYS.customers, []); },
-    saveCustomers(list){ write(KEYS.customers, list); pushCustomersToServer(list); },
+    saveCustomers(list){ return saveMerged(KEYS.customers, 'customers', list); },
 
     // lista de espera ("avise-me")
     getWaitlist(){ return read(KEYS.waitlist, []); },
-    saveWaitlist(list){ write(KEYS.waitlist, list); pushWaitlistToServer(list); },
+    saveWaitlist(list){ return saveMerged(KEYS.waitlist, 'waitlist', list); },
     addWaitlistEntry({ productName, customerName, customerPhone }){
       const list = this.getWaitlist();
       list.unshift({
@@ -389,6 +506,8 @@
     syncCustomers: pullCustomersFromServer,
     syncWaitlist: pullWaitlistFromServer,
     SYNC_CONFIG: SYNC_CONFIG,
+    // força o envio de TODOS os pedidos deste aparelho para a planilha (seguro: só adiciona/atualiza)
+    saveAllOrdersToCloud(){ const all = read(KEYS.orders, []); return pushMerge('orders', all, []).then(()=>all.length); },
     syncProducts: pullProductsFromServer,
     syncDelivery: pullDeliveryFromServer,
     syncExpenses: pullExpensesFromServer,
@@ -459,7 +578,7 @@
       const totalCents = productsCents + feeCents;
 
       const order = {
-        id: nextOrderId(orders),
+        id: storeOrderId(),
         customerName,
         customerPhone,
         customerEmail: customerEmail || '',
@@ -474,9 +593,9 @@
         createdAt: nowISO(),
       };
       orders.unshift(order);
-      this.saveOrders(orders);
+      write(KEYS.orders, orders);
 
-      // baixa estoque, do tamanho específico comprado
+      // baixa estoque, do tamanho específico comprado (localmente aqui; no servidor junto com o pedido)
       orderItems.forEach(oi=>{
         const p = products.find(pp => pp.name === oi.name);
         if(!p) return;
@@ -484,7 +603,8 @@
         const sz = p.sizes.find(s => s.label === (oi.size || 'Único'));
         if(sz) sz.stock = Math.max(0, (sz.stock || 0) - oi.qty);
       });
-      this.saveProducts(products);
+      write(KEYS.products, products);
+      pushMerge('orders', [order], [], orderItems.map(oi => ({ name: oi.name, size: oi.size || '', qty: oi.qty })));
 
       // registra/atualiza cliente, guardando o último endereço usado
       const customers = this.getCustomers();
@@ -513,4 +633,5 @@
   };
 
   window.JGStore = JGStore;
+  setTimeout(flushPending, 3000); // confirma/reenvia pedidos que ainda não chegaram ao servidor
 })();

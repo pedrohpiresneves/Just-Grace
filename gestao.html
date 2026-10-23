@@ -849,7 +849,7 @@ function openProductModal(product){
 /* ================= PEDIDOS ================= */
 function renderOrders(body, actions){
   const orders = S.getOrders();
-  actions.innerHTML = `<button class="btn primary" id="newOrderBtn">＋ Gerar Pedido</button>`;
+  actions.innerHTML = `<button class="btn" id="backupOrdersBtn">⬇ Backup dos pedidos</button> <button class="btn primary" id="newOrderBtn">＋ Gerar Pedido</button>`;
   const followUp = orders.filter(needsFollowUp).length;
   const awaiting = orders.filter(o=>o.status==='payment_pending').length;
   const paid = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).length;
@@ -868,6 +868,13 @@ function renderOrders(body, actions){
   `;
   attachOrderRowEvents(body);
   document.getElementById('newOrderBtn').addEventListener('click', openManualOrderModal);
+  document.getElementById('backupOrdersBtn').addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(S.getOrders(), null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pedidos-just-grace-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
 }
 
 /* Itens de pedido: a loja online usa qty/price/size e o pedido manual usa quantity/unitPriceCents — lemos os dois. */
@@ -1631,12 +1638,24 @@ function escapeAttr(str){ return escapeHtml(str); }
     ]);
     if(typeof renderView === 'function') renderView();
     const hora = new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    const local = (JGStore.getOrders ? JGStore.getOrders().length : 0);
+    const srv = (window.__jgServerCount || {}).orders;
     badge.textContent = orders
-      ? ('Atualizado às ' + hora)
+      ? ('Atualizado às ' + hora + (srv !== undefined ? ' · planilha: ' + srv + ' pedido(s)' : ''))
       : ('Falha ao sincronizar — tentando de novo…');
+    if(orders && srv !== undefined && local > srv){
+      badge.textContent += ' · aqui: ' + local + ' (toque p/ salvar na nuvem)';
+    }
   }
 
-  badge.addEventListener('click', doSync);
+  badge.addEventListener('click', async ()=>{
+    if(JGStore.saveAllOrdersToCloud){
+      badge.textContent = 'Salvando pedidos na nuvem…';
+      await JGStore.saveAllOrdersToCloud();
+      await new Promise(r=>setTimeout(r, 5000));
+    }
+    doSync();
+  });
   doSync();
   setInterval(doSync, 20000); // atualiza sozinho a cada 20s
 })();
