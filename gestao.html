@@ -1396,16 +1396,16 @@ function renderFinance(body, actions){
     .reduce((s,o)=> s + (o.totalCents||0), 0);
   const costMonth = orders.filter(o => ['paid','preparing','shipped','fulfilled'].includes(o.status) && (o.createdAt||'').slice(0,7) === monthKey)
     .reduce((s,o)=> s + orderProductCostCents(o) + orderPaymentFeeCents(o), 0);
-  const netMonth = revenueMonth - costMonth - totalMonth;
+  const pf = calcProfit(orders, expenses);
 
   actions.innerHTML = can('finance_manage') ? `<button class="btn primary" id="newExpenseBtn">＋ Nova Despesa</button>` : '';
 
   body.innerHTML = `
     <div class="kpi-grid">
-      <div class="kpi"><span>Custos Este Mês</span><strong>${money(totalMonth)}</strong><small>${thisMonth.length} lançamento(s)</small></div>
-      <div class="kpi"><span>Faturamento Este Mês</span><strong>${money(revenueMonth)}</strong><small>pedidos pagos</small></div>
-      <div class="kpi"><span>Resultado Do Mês</span><strong style="color:${netMonth>=0?'var(--ok)':'var(--danger)'}">${money(netMonth)}</strong><small>faturamento − produtos − taxas − despesas</small></div>
-      <div class="kpi"><span>Custos No Total</span><strong>${money(totalAll)}</strong><small>desde o início</small></div>
+      <div class="kpi"><span>Despesas</span><strong>${money(pf.expenses)}</strong><small>${expenses.length} lançamento(s) · este mês ${money(totalMonth)}</small></div>
+      <div class="kpi"><span>Taxas Do Banco</span><strong>${money(pf.fees)}</strong><small>Mercado Pago / maquininha, sobre as vendas pagas</small></div>
+      <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>vendas (com frete) − produtos ${money(pf.cost)} − taxas − despesas</small></div>
+      <div class="kpi"><span>Faturamento Total De Vendas</span><strong>${money(pf.revenue)}</strong><small>pedidos pagos, com ${money(pf.delivery)} de frete</small></div>
     </div>
     <div class="panel-block">
       <h3>Lançamentos</h3>
