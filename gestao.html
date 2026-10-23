@@ -522,11 +522,15 @@ const PAID_STATUSES = ['paid','preparing','shipped','fulfilled'];
    Checkout/Link: Pix 0,99% · Cartão de crédito 4,98% (à vista ou parcelado pelo cliente — a taxa de
    parcelamento é paga pelo cliente) · Saldo MP 4,99%. Maquininha Point: Pix 0% · débito 1,99% · crédito 4,98%.
    Ajuste os valores aqui se o Mercado Pago mudar as taxas. */
-const PAYMENT_FEE_RATES = { onlinePix: 0.0099, onlineCard: 0.0498, onlineBalance: 0.0499, manualPix: 0, manualCard: 0.0498, cash: 0 };
+const PAYMENT_FEE_RATES = { onlinePix: 0.0099, onlineCard: 0.0498, onlineBalance: 0.0499, manualPix: 0, manualDebit: 0.0199, manualCard: 0.0498, manualCardInstallments: 0.0531, tapDebit: 0.0089, tapCredit: 0.0309, tapInstallments: 0.0326, qrCard: 0.0498, cash: 0 };
 function orderPaymentFeeCents(order){
   const m = String(order.paymentMethod || '').toLowerCase();
   let rate = 0;
   if(m.includes('online')) rate = m.includes('pix') ? PAYMENT_FEE_RATES.onlinePix : (m.includes('saldo') ? PAYMENT_FEE_RATES.onlineBalance : PAYMENT_FEE_RATES.onlineCard);
+  else if(m.includes('tap')) rate = m.includes('déb') || m.includes('deb') ? PAYMENT_FEE_RATES.tapDebit : (m.includes('parcel') ? PAYMENT_FEE_RATES.tapInstallments : PAYMENT_FEE_RATES.tapCredit);
+  else if(m.includes('qr')) rate = (m.includes('cart') || m.includes('créd') || m.includes('cred')) ? PAYMENT_FEE_RATES.qrCard : 0;
+  else if(m.includes('déb') || m.includes('deb')) rate = PAYMENT_FEE_RATES.manualDebit;
+  else if(m.includes('parcel')) rate = PAYMENT_FEE_RATES.manualCardInstallments;
   else if(m.includes('cart')) rate = PAYMENT_FEE_RATES.manualCard;
   else if(m.includes('pix')) rate = PAYMENT_FEE_RATES.manualPix;
   return Math.round((order.totalCents || 0) * rate);
@@ -929,6 +933,12 @@ function openOrderModal(order){
             <option value="" ${!order.paymentMethod?'selected':''}>Não informado</option>
             <option ${order.paymentMethod==='PIX'?'selected':''}>PIX</option>
             <option ${order.paymentMethod==='Cartão'?'selected':''}>Cartão</option>
+            <option ${order.paymentMethod==='Cartão de débito'?'selected':''}>Cartão de débito</option>
+            <option ${order.paymentMethod==='Cartão de crédito parcelado'?'selected':''}>Cartão de crédito parcelado</option>
+            <option ${order.paymentMethod==='Tap — débito'?'selected':''}>Tap — débito</option>
+            <option ${order.paymentMethod==='Tap — crédito à vista'?'selected':''}>Tap — crédito à vista</option>
+            <option ${order.paymentMethod==='Tap — crédito parcelado'?'selected':''}>Tap — crédito parcelado</option>
+            <option ${order.paymentMethod==='QR Code — cartão de crédito'?'selected':''}>QR Code — cartão de crédito</option>
             <option ${order.paymentMethod==='Dinheiro'?'selected':''}>Dinheiro</option>
             <option ${order.paymentMethod==='WhatsApp — a combinar'?'selected':''}>WhatsApp — a combinar</option>
           </select>
@@ -1071,7 +1081,13 @@ function renderManualOrderModal(products, customers){
         <select id="fPayment">
           <option value="PIX" ${d.paymentMethod==='PIX'?'selected':''}>PIX</option>
           <option value="Dinheiro" ${d.paymentMethod==='Dinheiro'?'selected':''}>Dinheiro</option>
-          <option value="Cartão" ${d.paymentMethod==='Cartão'?'selected':''}>Cartão</option>
+          <option value="Cartão" ${d.paymentMethod==='Cartão'?'selected':''}>Cartão de crédito (à vista)</option>
+          <option value="Cartão de débito" ${d.paymentMethod==='Cartão de débito'?'selected':''}>Cartão de débito</option>
+          <option value="Cartão de crédito parcelado" ${d.paymentMethod==='Cartão de crédito parcelado'?'selected':''}>Cartão de crédito parcelado</option>
+          <option value="Tap — débito" ${d.paymentMethod==='Tap — débito'?'selected':''}>Tap — débito</option>
+          <option value="Tap — crédito à vista" ${d.paymentMethod==='Tap — crédito à vista'?'selected':''}>Tap — crédito à vista</option>
+          <option value="Tap — crédito parcelado" ${d.paymentMethod==='Tap — crédito parcelado'?'selected':''}>Tap — crédito parcelado</option>
+          <option value="QR Code — cartão de crédito" ${d.paymentMethod==='QR Code — cartão de crédito'?'selected':''}>QR Code — cartão de crédito</option>
         </select>
       </div>
       <div class="totals-row grand"><span>Total (venda confirmada)</span><b>${money(subtotal)}</b></div>
