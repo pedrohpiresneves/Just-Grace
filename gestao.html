@@ -929,7 +929,12 @@ function openOrderModal(order){
       </div>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Itens (${qty} peça(s))</h3>
       <table class="order-items-table">
-        ${order.items.map(i=>`<tr><td>${escapeHtml(i.name)}<br><b style="color:${i.size?'var(--gold-bright)':'var(--danger)'};">Tamanho: ${escapeHtml(itemSizeLabel(i))}</b><br><small style="color:var(--muted)">${itemQty(i)} × ${money(itemUnitCents(i))}</small></td><td>${money(itemQty(i)*itemUnitCents(i))}</td></tr>`).join('')}
+        ${order.items.map((i,idx)=>{
+          const prod = S.getProducts().find(x=>x.id===i.productId) || S.getProducts().find(x=>x.name===i.name);
+          const labels = prod ? S.normalizeSizes(prod).map(s=>s.label) : ['P','M','G','GG'];
+          if(i.size && !labels.includes(i.size)) labels.unshift(i.size);
+          return `<tr><td>${escapeHtml(i.name)}<br><label style="font-size:0.8rem; color:${i.size?'var(--gold-bright)':'var(--danger)'};">Tamanho: <select data-item-size="${idx}" style="width:auto; padding:2px 6px;">${i.size ? '' : '<option value="">NÃO INFORMADO</option>'}${labels.map(l=>`<option value="${escapeAttr(l)}" ${l===i.size?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label><br><small style="color:var(--muted)">${itemQty(i)} × ${money(itemUnitCents(i))}</small></td><td>${money(itemQty(i)*itemUnitCents(i))}</td></tr>`;
+        }).join('')}
       </table>
       <div class="totals-row"><span>Subtotal</span><b>${money(order.subtotalCents ?? order.productsCents ?? 0)}</b></div>
       <div class="totals-row"><span>Frete</span><b>${money(order.deliveryFeeCents ?? order.deliveryCents ?? 0)}</b></div>
@@ -965,6 +970,25 @@ function openOrderModal(order){
   document.getElementById('mSave').addEventListener('click', ()=>{
     const status = document.getElementById('fStatus').value;
     const pay = document.getElementById('fPay').value;
+    // tamanhos corrigidos pelo gestor
+    const allOrders = S.getOrders();
+    const oi = allOrders.findIndex(o=>o.id===order.id);
+    if(oi >= 0){
+      const changes = [];
+      document.querySelectorAll('[data-item-size]').forEach(sel=>{
+        const it = allOrders[oi].items[Number(sel.dataset.itemSize)];
+        if(it && sel.value && sel.value !== (it.size||'')){
+          changes.push(`${it.name}: ${it.size||'sem tamanho'} → ${sel.value}`);
+          it.size = sel.value;
+        }
+      });
+      if(changes.length){
+        allOrders[oi].events = allOrders[oi].events || [];
+        allOrders[oi].events.push({ id:S.uid('ev'), label:'Tamanho alterado — '+changes.join('; '), actor:session.name, createdAt:S.nowISO() });
+        S.saveOrders(allOrders);
+        S.addAudit('order_size', `Pedido ${order.id}: ${changes.join('; ')}.`, session.name);
+      }
+    }
     updateOrderStatus(order, status, pay, `Andamento atualizado para "${S.orderStatusLabel(status)}".`);
     closeModal(); renderView();
   });
