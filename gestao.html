@@ -870,12 +870,20 @@ function renderOrders(body, actions){
   document.getElementById('newOrderBtn').addEventListener('click', openManualOrderModal);
 }
 
+/* Itens de pedido: a loja online usa qty/price/size e o pedido manual usa quantity/unitPriceCents — lemos os dois. */
+function itemQty(i){ return i.quantity ?? i.qty ?? 0; }
+function itemUnitCents(i){ return i.unitPriceCents ?? Math.round((i.price||0)*100); }
+function itemSizeText(i){ return i.size && i.size !== 'Único' ? i.size : ''; }
+function itemsSummary(o){
+  return (o.items||[]).map(i=>`${itemQty(i)}× ${i.name}${itemSizeText(i) ? ' (Tam. '+itemSizeText(i)+')' : ''}`).join(' · ');
+}
+
 function orderRowHTML(o){
-  const qty = o.items.reduce((s,i)=>s+i.quantity,0);
+  const qty = o.items.reduce((s,i)=>s+itemQty(i),0);
   return `
     <div class="order-row ${needsFollowUp(o)?'followup':''}" data-id="${o.id}">
       <span class="oid">${o.id}</span>
-      <div class="oname"><b>${escapeHtml(o.customerName)}</b><small>${new Date(o.createdAt).toLocaleString('pt-BR')} · ${qty} peça(s)</small></div>
+      <div class="oname"><b>${escapeHtml(o.customerName)}</b><small>${new Date(o.createdAt).toLocaleString('pt-BR')} · ${qty} peça(s)</small><small style="display:block; color:var(--gold-bright);">${escapeHtml(itemsSummary(o))}</small></div>
       <span class="status-pill ${o.status}">${S.orderStatusLabel(o.status)}</span>
       <span class="ototal">${money(o.totalCents)}</span>
     </div>`;
@@ -891,7 +899,7 @@ function attachOrderRowEvents(root){
 }
 
 function openOrderModal(order){
-  const qty = order.items.reduce((s,i)=>s+i.quantity,0);
+  const qty = order.items.reduce((s,i)=>s+itemQty(i),0);
   showModal(`
     <header><div><span class="eyebrow">PEDIDO ${order.id}</span><h3>${escapeHtml(order.customerName)}</h3></div><button class="close" id="mClose">×</button></header>
     <div class="modal-body">
@@ -920,7 +928,7 @@ function openOrderModal(order){
       </div>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Itens (${qty} peça(s))</h3>
       <table class="order-items-table">
-        ${order.items.map(i=>`<tr><td>${escapeHtml(i.name)}<br><small style="color:var(--muted)">${i.quantity} × ${money(i.unitPriceCents)}</small></td><td>${money(i.quantity*i.unitPriceCents)}</td></tr>`).join('')}
+        ${order.items.map(i=>`<tr><td>${escapeHtml(i.name)}${itemSizeText(i) ? `<br><b style="color:var(--gold-bright);">Tamanho: ${escapeHtml(itemSizeText(i))}</b>` : ''}<br><small style="color:var(--muted)">${itemQty(i)} × ${money(itemUnitCents(i))}</small></td><td>${money(itemQty(i)*itemUnitCents(i))}</td></tr>`).join('')}
       </table>
       <div class="totals-row"><span>Subtotal</span><b>${money(order.subtotalCents ?? order.productsCents ?? 0)}</b></div>
       <div class="totals-row"><span>Frete</span><b>${money(order.deliveryFeeCents ?? order.deliveryCents ?? 0)}</b></div>
@@ -1061,7 +1069,15 @@ function renderManualOrderModal(products, customers){
   });
   document.querySelectorAll('.manual-item-row').forEach(row=>{
     const i = Number(row.dataset.index);
-    row.querySelector('select').addEventListener('change', e=>{ d.items[i].productId = e.target.value; renderManualOrderModal(products, customers); });
+    row.querySelector('select').addEventListener('change', e=>{
+      d.items[i].productId = e.target.value;
+      const np = products.find(x=>x.id===e.target.value);
+      const first = np ? S.normalizeSizes(np).find(sz=>sz.stock>0) : null;
+      d.items[i].size = first ? first.label : '';
+      renderManualOrderModal(products, customers);
+    });
+    const sizeSel = row.querySelector('[data-size-select]');
+    if(sizeSel) sizeSel.addEventListener('change', e=>{ d.items[i].size = e.target.value; });
     const dec = row.querySelector('[data-qc="dec"]'), inc = row.querySelector('[data-qc="inc"]');
     if(dec) dec.addEventListener('click', ()=>{ d.items[i].qty = Math.max(1, d.items[i].qty-1); renderManualOrderModal(products, customers); });
     if(inc) inc.addEventListener('click', ()=>{ d.items[i].qty = d.items[i].qty+1; renderManualOrderModal(products, customers); });
@@ -1074,7 +1090,9 @@ function renderManualOrderModal(products, customers){
     if(!validItems.length){ alert('Adicione ao menos uma peça válida.'); return; }
     const orderItems = validItems.map(it=>{
       const p = products.find(x=>x.id===it.productId);
-      return { productId:p.id, name:p.name, quantity:it.qty, unitPriceCents:p.priceCents };
+      const szs = S.normalizeSizes(p);
+      const size = it.size || (szs.find(sz=>sz.stock>0) || szs[0] || {}).label || '';
+      return { productId:p.id, name:p.name, size, quantity:it.qty, unitPriceCents:p.priceCents };
     });
     const subtotalCents = orderItems.reduce((s,i)=>s+i.unitPriceCents*i.quantity,0);
     const order = {
@@ -1110,6 +1128,9 @@ function manualItemRowHTML(it, i, products){
       <select>
         <option value="">Selecione uma peça</option>
         ${products.map(pr=>`<option value="${pr.id}" ${it.productId===pr.id?'selected':''} ${S.productTotalStock(pr)===0?'disabled':''}>${escapeHtml(pr.name)} · ${money(pr.priceCents)} · ${S.productTotalStock(pr)} em estoque</option>`).join('')}
+      </select>
+      <select data-size-select style="max-width:90px;">
+        ${p ? S.normalizeSizes(p).map(sz=>`<option value="${escapeAttr(sz.label)}" ${it.size===sz.label?'selected':''} ${sz.stock<=0?'disabled':''}>${escapeHtml(sz.label)}${sz.stock<=0?' (esgotado)':''}</option>`).join('') : '<option value="">Tam.</option>'}
       </select>
       <div class="qc"><button type="button" data-qc="dec">−</button><b>${it.qty}</b><button type="button" data-qc="inc">＋</button></div>
       <strong style="min-width:80px; text-align:right;">${money((p?p.priceCents:0)*it.qty)}</strong>
