@@ -501,7 +501,7 @@ function renderDashboard(body){
       <div class="kpi"><span>Esgotados</span><strong>${out}</strong><small>precisam de atenção</small></div>
       <div class="kpi"><span>Pedidos</span><strong>${orders.length}</strong><small>recebidos no total</small></div>
       <div class="kpi"><span>Faturamento</span><strong>${money(revenue)}</strong><small>pedidos pagos, com frete</small></div>
-      <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>faturamento (com ${money(pf.delivery)} de frete) − custo dos produtos ${money(pf.cost)} − despesas ${money(pf.expenses)}</small></div>
+      <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>faturamento (com ${money(pf.delivery)} de frete) − produtos ${money(pf.cost)} − taxas de pagamento ${money(pf.fees)} − despesas ${money(pf.expenses)}</small></div>
       <div class="kpi"><span>Clientes</span><strong>${customers.length}</strong><small>cadastrados</small></div>
     </div>
     <div class="panel-block">
@@ -509,7 +509,7 @@ function renderDashboard(body){
       ${profitChartSVG(series)}
       <div style="display:flex; gap:18px; flex-wrap:wrap; font-size:0.8rem; margin-top:8px; color:var(--muted);">
         <span><i style="display:inline-block;width:10px;height:10px;background:#b08d5b;border-radius:2px;margin-right:6px;"></i>Faturamento (com frete)</span>
-        <span><i style="display:inline-block;width:10px;height:10px;background:#8a8578;border-radius:2px;margin-right:6px;"></i>Custo dos produtos + despesas</span>
+        <span><i style="display:inline-block;width:10px;height:10px;background:#8a8578;border-radius:2px;margin-right:6px;"></i>Produtos + taxas + despesas</span>
         <span><i style="display:inline-block;width:10px;height:10px;background:#6fae7f;border-radius:2px;margin-right:6px;"></i>Lucro</span>
       </div>
     </div>
@@ -528,6 +528,19 @@ function renderDashboard(body){
 }
 
 const PAID_STATUSES = ['paid','preparing','shipped','fulfilled'];
+/* Taxas do Mercado Pago pagas pela loja (percentual sobre o total do pedido, frete incluso).
+   Checkout/Link: Pix 0,99% · Cartão de crédito 4,98% (à vista ou parcelado pelo cliente — a taxa de
+   parcelamento é paga pelo cliente) · Saldo MP 4,99%. Maquininha Point: Pix 0% · débito 1,99% · crédito 4,98%.
+   Ajuste os valores aqui se o Mercado Pago mudar as taxas. */
+const PAYMENT_FEE_RATES = { onlinePix: 0.0099, onlineCard: 0.0498, onlineBalance: 0.0499, manualPix: 0, manualCard: 0.0498, cash: 0 };
+function orderPaymentFeeCents(order){
+  const m = String(order.paymentMethod || '').toLowerCase();
+  let rate = 0;
+  if(m.includes('online')) rate = m.includes('pix') ? PAYMENT_FEE_RATES.onlinePix : (m.includes('saldo') ? PAYMENT_FEE_RATES.onlineBalance : PAYMENT_FEE_RATES.onlineCard);
+  else if(m.includes('cart')) rate = PAYMENT_FEE_RATES.manualCard;
+  else if(m.includes('pix')) rate = PAYMENT_FEE_RATES.manualPix;
+  return Math.round((order.totalCents || 0) * rate);
+}
 /* Custo dos produtos de um pedido (custo cadastrado no produto × quantidade). */
 function orderProductCostCents(order){
   const prods = S.getProducts();
@@ -543,7 +556,8 @@ function calcProfit(orders, expenses){
   const delivery = paid.reduce((s,o)=>s+(o.deliveryFeeCents ?? o.deliveryCents ?? 0),0);
   const cost = paid.reduce((s,o)=>s+orderProductCostCents(o),0);
   const exp = (expenses||[]).reduce((s,e)=>s+(e.amountCents||0),0);
-  return { revenue, delivery, cost, expenses: exp, profit: revenue - cost - exp };
+  const fees = paid.reduce((s,o)=>s+orderPaymentFeeCents(o),0);
+  return { revenue, delivery, cost, fees, expenses: exp, profit: revenue - cost - fees - exp };
 }
 
 /* Série dos últimos 6 meses para o gráfico do dashboard. */
@@ -559,7 +573,7 @@ function monthlySeries(orders, expenses, n=6){
   orders.filter(o=>PAID_STATUSES.includes(o.status)).forEach(o=>{
     const m = byKey[(o.createdAt||'').slice(0,7)]; if(!m) return;
     m.revenue += (o.totalCents||0);
-    m.outflow += orderProductCostCents(o);
+    m.outflow += orderProductCostCents(o) + orderPaymentFeeCents(o);
   });
   (expenses||[]).forEach(e=>{
     const m = byKey[(e.date||'').slice(0,7)]; if(!m) return;
@@ -589,7 +603,7 @@ function profitChartSVG(series){
     const cx = padL + gw*i + gw/2;
     const bars = [
       {v:m.revenue, c:'#b08d5b', l:'Faturamento'},
-      {v:m.outflow, c:'#8a8578', l:'Custos + despesas'},
+      {v:m.outflow, c:'#8a8578', l:'Produtos + taxas + despesas'},
       {v:m.profit,  c: m.profit>=0 ? '#6fae7f' : '#c96b5e', l:'Lucro'},
     ];
     bars.forEach((b,j)=>{
@@ -1395,7 +1409,7 @@ function renderFinance(body, actions){
   const revenueMonth = orders.filter(o => ['paid','preparing','shipped','fulfilled'].includes(o.status) && (o.createdAt||'').slice(0,7) === monthKey)
     .reduce((s,o)=> s + (o.totalCents||0), 0);
   const costMonth = orders.filter(o => ['paid','preparing','shipped','fulfilled'].includes(o.status) && (o.createdAt||'').slice(0,7) === monthKey)
-    .reduce((s,o)=> s + orderProductCostCents(o), 0);
+    .reduce((s,o)=> s + orderProductCostCents(o) + orderPaymentFeeCents(o), 0);
   const netMonth = revenueMonth - costMonth - totalMonth;
 
   actions.innerHTML = can('finance_manage') ? `<button class="btn primary" id="newExpenseBtn">＋ Nova Despesa</button>` : '';
@@ -1404,7 +1418,7 @@ function renderFinance(body, actions){
     <div class="kpi-grid">
       <div class="kpi"><span>Custos Este Mês</span><strong>${money(totalMonth)}</strong><small>${thisMonth.length} lançamento(s)</small></div>
       <div class="kpi"><span>Faturamento Este Mês</span><strong>${money(revenueMonth)}</strong><small>pedidos pagos</small></div>
-      <div class="kpi"><span>Resultado Do Mês</span><strong style="color:${netMonth>=0?'var(--ok)':'var(--danger)'}">${money(netMonth)}</strong><small>faturamento − custo dos produtos − despesas</small></div>
+      <div class="kpi"><span>Resultado Do Mês</span><strong style="color:${netMonth>=0?'var(--ok)':'var(--danger)'}">${money(netMonth)}</strong><small>faturamento − produtos − taxas − despesas</small></div>
       <div class="kpi"><span>Custos No Total</span><strong>${money(totalAll)}</strong><small>desde o início</small></div>
     </div>
     <div class="panel-block">
