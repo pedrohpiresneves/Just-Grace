@@ -874,8 +874,9 @@ function renderOrders(body, actions){
 function itemQty(i){ return i.quantity ?? i.qty ?? 0; }
 function itemUnitCents(i){ return i.unitPriceCents ?? Math.round((i.price||0)*100); }
 function itemSizeText(i){ return i.size && i.size !== 'Único' ? i.size : ''; }
+function itemSizeLabel(i){ return i.size ? i.size : 'NÃO INFORMADO'; }
 function itemsSummary(o){
-  return (o.items||[]).map(i=>`${itemQty(i)}× ${i.name}${itemSizeText(i) ? ' (Tam. '+itemSizeText(i)+')' : ''}`).join(' · ');
+  return (o.items||[]).map(i=>`${itemQty(i)}× ${i.name}${' (Tam. '+itemSizeLabel(i)+')'}`).join(' · ');
 }
 
 function orderRowHTML(o){
@@ -928,7 +929,7 @@ function openOrderModal(order){
       </div>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Itens (${qty} peça(s))</h3>
       <table class="order-items-table">
-        ${order.items.map(i=>`<tr><td>${escapeHtml(i.name)}${itemSizeText(i) ? `<br><b style="color:var(--gold-bright);">Tamanho: ${escapeHtml(itemSizeText(i))}</b>` : ''}<br><small style="color:var(--muted)">${itemQty(i)} × ${money(itemUnitCents(i))}</small></td><td>${money(itemQty(i)*itemUnitCents(i))}</td></tr>`).join('')}
+        ${order.items.map(i=>`<tr><td>${escapeHtml(i.name)}<br><b style="color:${i.size?'var(--gold-bright)':'var(--danger)'};">Tamanho: ${escapeHtml(itemSizeLabel(i))}</b><br><small style="color:var(--muted)">${itemQty(i)} × ${money(itemUnitCents(i))}</small></td><td>${money(itemQty(i)*itemUnitCents(i))}</td></tr>`).join('')}
       </table>
       <div class="totals-row"><span>Subtotal</span><b>${money(order.subtotalCents ?? order.productsCents ?? 0)}</b></div>
       <div class="totals-row"><span>Frete</span><b>${money(order.deliveryFeeCents ?? order.deliveryCents ?? 0)}</b></div>

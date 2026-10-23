@@ -860,8 +860,23 @@ observeReveals(document);
   const activeTab = ()=> (document.querySelector('.tab.active') || {dataset:{cat:'all'}}).dataset.cat || 'all';
   JGStore.syncProducts().then(list=>{
     if(!list) return;
-    products = [...demoProducts, ...loadStoreProducts()];
+    const fresh = [...demoProducts, ...loadStoreProducts()];
+    if(JSON.stringify(fresh) === JSON.stringify(products)) return; // nada mudou: não mexe na tela
+    // guarda os tamanhos que o cliente já escolheu para não perder a seleção ao atualizar
+    const picked = {};
+    document.querySelectorAll('#grid .card').forEach(c=>{
+      const n = c.querySelector('h3'), b = c.querySelector('.size-btn.selected');
+      if(n && b) picked[n.textContent] = b.dataset.size;
+    });
+    products = fresh;
     render(activeTab());
+    document.querySelectorAll('#grid .card').forEach(c=>{
+      const n = c.querySelector('h3');
+      const want = n && picked[n.textContent];
+      if(!want) return;
+      const btn = Array.from(c.querySelectorAll('.size-btn')).find(b=>b.dataset.size===want && !b.disabled);
+      if(btn){ c.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('selected')); btn.classList.add('selected'); }
+    });
   }).catch(()=>{});
   if(JGStore.syncDelivery) JGStore.syncDelivery().catch(()=>{});
 })();
@@ -1362,6 +1377,10 @@ document.addEventListener('click', e=>{
     const card = e.target.closest('.card');
     const selectedSizeBtn = card ? card.querySelector('.size-btn.selected') : null;
     const size = selectedSizeBtn ? selectedSizeBtn.dataset.size : null;
+    if(product && product.sizes && product.sizes.length && !size){
+      showToast('Escolha o tamanho antes de adicionar à sacola');
+      return;
+    }
     if(product) addToCart(product, size);
     showToast(`"${e.target.dataset.name}"${size && size !== 'Único' ? ' (Tam. ' + size + ')' : ''} adicionado à sacola`);
     return;
