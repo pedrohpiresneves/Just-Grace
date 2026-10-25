@@ -890,6 +890,14 @@ function itemsSummary(o){
   return (o.items||[]).map(i=>`${itemQty(i)}× ${i.name}${' (Tam. '+itemSizeLabel(i)+')'}`).join(' · ');
 }
 
+/* Número só com dígitos, com DDI 55 (Brasil) — usado nos links de WhatsApp e ligação. */
+function phoneDigits(phone){
+  let d = String(phone || '').replace(/\D/g, '');
+  if(d.startsWith('00')) d = d.slice(2);
+  if(d.length <= 11) d = '55' + d;
+  return d;
+}
+
 /* Endereço do cliente em uma linha só (rua, número, complemento, bairro, cidade/UF, CEP). */
 function addressText(a){
   if(!a) return '';
@@ -976,8 +984,8 @@ function openOrderModal(order){
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Linha do tempo</h3>
       ${(order.events||[]).map(e=>`<div class="timeline-item"><b>${escapeHtml(e.label)}</b><small>${escapeHtml(e.actor)} · ${new Date(e.createdAt).toLocaleString('pt-BR')}</small></div>`).join('')}
       <div class="cust-contact-links" style="margin-top:18px;">
-        <a href="https://wa.me/55${order.customerPhone.replace(/\\D/g,'')}" target="_blank" rel="noreferrer">Abrir WhatsApp</a>
-        <a href="tel:+55${order.customerPhone.replace(/\\D/g,'')}">Ligar</a>
+        <a href="https://wa.me/${phoneDigits(order.customerPhone)}" target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+        <a href="tel:+${phoneDigits(order.customerPhone)}">Ligar</a>
       </div>
     </div>
     <footer>
@@ -1294,8 +1302,8 @@ function customerDetailHTML(c){
           <dt>Total gasto</dt><dd>${money(c.revenueCents)}</dd>
         </dl>
         <div class="cust-contact-links">
-          <a href="https://wa.me/55${c.phone.replace(/\\D/g,'')}" target="_blank" rel="noreferrer">Abrir WhatsApp</a>
-          <a href="tel:+55${c.phone.replace(/\\D/g,'')}">Ligar</a>
+          <a href="https://wa.me/${phoneDigits(c.phone)}" target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+          <a href="tel:+${phoneDigits(c.phone)}">Ligar</a>
         </div>
         <div style="margin-top:16px;">
           <label>Notas Internas</label>
