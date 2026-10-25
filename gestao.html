@@ -890,12 +890,28 @@ function itemsSummary(o){
   return (o.items||[]).map(i=>`${itemQty(i)}× ${i.name}${' (Tam. '+itemSizeLabel(i)+')'}`).join(' · ');
 }
 
+/* Endereço do cliente em uma linha só (rua, número, complemento, bairro, cidade/UF, CEP). */
+function addressText(a){
+  if(!a) return '';
+  if(typeof a === 'string') return a;
+  const parts = [];
+  const street = [a.street, a.number].filter(Boolean).join(', ');
+  if(street) parts.push(street);
+  if(a.complement) parts.push(a.complement);
+  if(a.neighborhood) parts.push(a.neighborhood);
+  const city = [a.city, a.state].filter(Boolean).join('/');
+  if(city) parts.push(city);
+  if(a.postalCode) parts.push('CEP ' + a.postalCode);
+  return parts.join(' · ');
+}
+function mapsLink(txt){ return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(txt); }
+
 function orderRowHTML(o){
   const qty = o.items.reduce((s,i)=>s+itemQty(i),0);
   return `
     <div class="order-row ${needsFollowUp(o)?'followup':''}" data-id="${o.id}">
       <span class="oid">${o.id}</span>
-      <div class="oname"><b>${escapeHtml(o.customerName)}</b><small>${new Date(o.createdAt).toLocaleString('pt-BR')} · ${qty} peça(s)</small><small style="display:block; color:var(--gold-bright);">${escapeHtml(itemsSummary(o))}</small></div>
+      <div class="oname"><b>${escapeHtml(o.customerName)}</b><small>${new Date(o.createdAt).toLocaleString('pt-BR')} · ${qty} peça(s)</small><small style="display:block; color:var(--gold-bright);">${escapeHtml(itemsSummary(o))}</small><small style="display:block;">📍 ${escapeHtml(addressText(o.address) || 'Endereço não informado')}</small></div>
       <span class="status-pill ${o.status}">${S.orderStatusLabel(o.status)}</span>
       <span class="ototal">${money(o.totalCents)}</span>
     </div>`;
@@ -918,6 +934,7 @@ function openOrderModal(order){
       <div class="grid2">
         <div class="field"><label>WhatsApp</label><input value="${escapeAttr(order.customerPhone)}" disabled></div>
         <div class="field"><label>Data Do Pedido</label><input value="${new Date(order.createdAt).toLocaleString('pt-BR')}" disabled></div>
+        <div class="field wide"><label>Endereço De Entrega</label><textarea rows="2" disabled>${escapeHtml(addressText(order.address) || 'Endereço não informado (pedido sem endereço)')}</textarea>${addressText(order.address) ? `<a href="${mapsLink(addressText(order.address))}" target="_blank" rel="noreferrer" style="font-size:0.8rem; color:var(--gold-bright);">Abrir no mapa</a>` : ''}</div>
         <div class="field"><label>Situação Do Pedido</label>
           <select id="fStatus">
             <option value="paid" ${order.status==='paid'?'selected':''}>Pagamento Confirmado</option>
@@ -1201,7 +1218,7 @@ function renderCustomers(body, actions){
       <div class="kpi"><span>Já Compraram</span><strong>${buyers}</strong></div>
       <div class="kpi"><span>Faturamento</span><strong>${money(revenue)}</strong></div>
     </div>
-    <div class="search-row" style="margin-bottom:18px;"><input type="text" id="custSearch" placeholder="Buscar por nome ou WhatsApp" value="${escapeAttr(customerSearch)}"></div>
+    <div class="search-row" style="margin-bottom:18px;"><input type="text" id="custSearch" placeholder="Buscar por nome, WhatsApp ou endereço" value="${escapeAttr(customerSearch)}"></div>
     <div class="panel-block" style="padding:0; overflow-x:auto;">
       <table class="customer-table">
         <thead><tr><th>Cliente</th><th>WhatsApp</th><th>Pedidos</th><th>Faturamento</th><th>Status</th></tr></thead>
@@ -1220,16 +1237,18 @@ function enrichCustomer(c, orders){
   const paidOrders = custOrders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status));
   const revenueCents = paidOrders.reduce((s,o)=>s+o.totalCents,0);
   const classification = paidOrders.length>=5 ? 'VIP' : paidOrders.length>=3 ? 'Recorrente' : paidOrders.length>=1 ? 'Ativo' : 'Novo';
-  return { ...c, orders:custOrders, paidOrders:paidOrders.length, revenueCents, classification };
+  const lastWithAddress = custOrders.find(o=>o.address);
+  const address = c.address || (lastWithAddress && lastWithAddress.address) || null;
+  return { ...c, address, orders:custOrders, paidOrders:paidOrders.length, revenueCents, classification };
 }
 
 function renderCustomerRows(enriched){
   const tbody = document.getElementById('custBody');
-  const filtered = enriched.filter(c => `${c.name} ${c.phone}`.toLowerCase().includes(customerSearch.toLowerCase()));
+  const filtered = enriched.filter(c => `${c.name} ${c.phone} ${addressText(c.address)}`.toLowerCase().includes(customerSearch.toLowerCase()));
   if(!filtered.length){ tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Nenhum cliente registrado ainda. O primeiro cadastro aparece quando alguém finaliza um pedido na loja.</td></tr>`; return; }
   tbody.innerHTML = filtered.map(c => `
     <tr class="cust-row" data-id="${c.id}">
-      <td><b>${escapeHtml(c.name)}</b></td>
+      <td><b>${escapeHtml(c.name)}</b><br><small style="color:var(--muted);">📍 ${escapeHtml(addressText(c.address) || 'Endereço não informado')}</small></td>
       <td>${escapeHtml(c.phone)}</td>
       <td>${c.paidOrders}</td>
       <td>${money(c.revenueCents)}</td>
@@ -1269,6 +1288,7 @@ function customerDetailHTML(c){
         <p class="eyebrow" style="margin-bottom:10px;">CONTATO</p>
         <dl>
           <dt>WhatsApp</dt><dd>${escapeHtml(c.phone)}</dd>
+          <dt>Endereço</dt><dd>${escapeHtml(addressText(c.address) || 'Não informado')}${addressText(c.address) ? ` · <a href="${mapsLink(addressText(c.address))}" target="_blank" rel="noreferrer">mapa</a>` : ''}</dd>
           <dt>Cliente desde</dt><dd>${new Date(c.createdAt).toLocaleDateString('pt-BR')}</dd>
           <dt>Classificação</dt><dd>${c.classification}</dd>
           <dt>Total gasto</dt><dd>${money(c.revenueCents)}</dd>
