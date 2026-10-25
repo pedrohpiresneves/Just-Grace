@@ -269,8 +269,96 @@
   }
   .menu-toggle{ display:none; }
   @media (max-width:920px){ .menu-toggle{ display:inline-flex; } }
+
+  /* ===== CELULAR ===== */
+  .mobile-bar{ display:none; }
+  .drawer-backdrop{ display:none; }
+  @media (max-width:920px){
+    html{ -webkit-text-size-adjust:100%; }
+    body{ font-size:15px; }
+    input, select, textarea{ font-size:16px; } /* evita o zoom automático do iPhone */
+    .btn{ padding:12px 16px; min-height:44px; }
+    .sidebar nav button, .sidebar nav a.store-link{ padding:14px 12px; font-size:0.95rem; }
+    .sidebar{ width:min(280px, 82vw); box-shadow:0 0 40px rgba(0,0,0,.6); }
+    .drawer-backdrop{ display:block; position:fixed; inset:0; background:rgba(4,4,3,.6); z-index:190; opacity:0; pointer-events:none; transition:opacity .3s; }
+    .drawer-backdrop.open{ opacity:1; pointer-events:auto; }
+
+    /* barra superior fixa com botão de menu */
+    .mobile-bar{
+      display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:150;
+      background:var(--charcoal); border-bottom:1px solid var(--panel-line);
+      padding:10px 14px; margin:0 -16px 22px;
+    }
+    .mobile-bar .menu-btn{ width:44px; height:44px; border:1px solid var(--panel-line); font-size:1.3rem; color:var(--gold-bright); }
+    .mobile-bar b{ font-family:'Cormorant Garamond',serif; font-size:1.15rem; font-weight:600; }
+    .mobile-bar small{ display:block; font-size:0.6rem; letter-spacing:0.2em; color:var(--muted); }
+
+    #appShell.open{ display:block; }
+    main.content{ padding:0 16px 90px; overflow-x:hidden; }
+    .content-head{ flex-direction:column; align-items:stretch; margin-bottom:20px; }
+    .content-head h2{ font-size:1.6rem; }
+    .content-actions{ width:100%; }
+    .content-actions .btn{ flex:1 1 auto; text-align:center; }
+
+    .kpi-grid{ grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px; }
+    .kpi{ padding:14px; }
+    .kpi strong{ font-size:1.5rem; word-break:break-word; }
+    .kpi small{ font-size:0.68rem; }
+    .panel-block{ padding:16px; }
+
+    .products-grid{ grid-template-columns:1fr 1fr; gap:12px; }
+    .product-card{ padding:12px; }
+    .product-actions button{ padding:11px 6px; }
+    .qty-ctrl button{ width:34px; height:34px; }
+    .search-row{ max-width:none; }
+
+    /* pedidos em cartões */
+    .order-row{ padding:14px; gap:8px 12px; }
+    .order-row .oid{ width:auto; }
+    .order-row .oname{ flex-basis:100%; order:3; min-width:0; }
+    .order-row .ototal{ width:auto; margin-left:auto; }
+
+    /* tabelas rolam para o lado dentro do cartão */
+    .panel-block, .customer-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .data-table{ min-width:560px; }
+
+    /* clientes: cada linha vira um cartão */
+    .customer-table, .customer-table tbody, .customer-table tr, .customer-table td{ display:block; width:100%; }
+    .customer-table thead{ display:none; }
+    .customer-table tr.cust-row{ padding:12px 14px; border-bottom:1px solid var(--panel-line); }
+    .customer-table td{ border:none; padding:2px 0; }
+    .customer-table tr.cust-row td:nth-child(2)::before{ content:'WhatsApp: '; color:var(--muted); }
+    .customer-table tr.cust-row td:nth-child(3)::before{ content:'Pedidos: '; color:var(--muted); }
+    .customer-table tr.cust-row td:nth-child(4)::before{ content:'Faturamento: '; color:var(--muted); }
+    .cust-detail-row td{ padding:14px; }
+    .cust-detail-grid dl{ grid-template-columns:90px 1fr; }
+    .cust-contact-links a{ flex:1; text-align:center; padding:12px; }
+
+    .delivery-zones{ grid-template-columns:1fr; }
+    .zone-row{ flex-wrap:wrap; }
+    .users-grid{ grid-template-columns:1fr; }
+
+    /* janelas (modais) ocupam a tela inteira */
+    .modal-backdrop{ padding:0; align-items:stretch; }
+    .modal, .modal.wide{ width:100%; max-height:none; height:100%; border:none; }
+    .modal header{ padding:16px; }
+    .modal-body{ padding:16px; }
+    .modal footer{ padding:12px 16px; flex-wrap:wrap; position:sticky; bottom:0; background:var(--charcoal); }
+    .modal footer .btn{ flex:1 1 40%; text-align:center; }
+    .manual-item-row{ flex-wrap:wrap; }
+    .manual-item-row select{ flex:1 1 100%; }
+    .order-items-table select{ font-size:16px; }
+
+    /* avisos e selo de sincronização não cobrem o conteúdo */
+    #syncBadge{ left:10px !important; right:10px !important; bottom:10px !important; text-align:center; font-size:0.72rem !important; }
+    .notice-toast{ left:10px; right:10px; bottom:60px; }
+  }
+  @media (max-width:420px){
+    .products-grid{ grid-template-columns:1fr; }
+    .kpi strong{ font-size:1.35rem; }
+  }
 </style>
-</head>
+
 <body>
 
 <!-- ===== LOGIN ===== -->
@@ -317,7 +405,12 @@
     </div>
   </aside>
 
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
   <main class="content">
+    <div class="mobile-bar">
+      <button type="button" class="menu-btn" id="menuBtn" aria-label="Abrir menu">☰</button>
+      <div><b>Just Grace</b><small id="mobileTitle">GESTÃO</small></div>
+    </div>
     <div class="content-head">
       <div>
         <span class="eyebrow" id="viewEyebrow">PAINEL DE GESTÃO</span>
@@ -451,8 +544,15 @@ function renderNav(){
   });
 }
 
+function closeDrawer(){
+  const sb = document.getElementById('sidebar'), bd = document.getElementById('drawerBackdrop');
+  if(sb) sb.classList.remove('open');
+  if(bd) bd.classList.remove('open');
+}
 function goTo(view){
   currentView = view;
+  closeDrawer();
+  window.scrollTo(0, 0);
   renderNav();
   const titles = {
     dashboard: ['DASHBOARD','Visão Geral'], products:['CATÁLOGO','Produtos E Estoque'],
@@ -463,6 +563,7 @@ function goTo(view){
   };
   document.getElementById('viewEyebrow').textContent = titles[view][0];
   document.getElementById('viewTitle').textContent = titles[view][1];
+  const mt = document.getElementById('mobileTitle'); if(mt) mt.textContent = titles[view][1].toUpperCase();
   renderView();
 }
 
@@ -956,6 +1057,7 @@ function openOrderModal(order){
         <div class="field"><label>Forma De Pagamento</label>
           <select id="fPay">
             <option value="" ${!order.paymentMethod?'selected':''}>Não informado</option>
+            ${['Online (PIX)','Online (Cartão de crédito)','A combinar pelo WhatsApp'].includes(order.paymentMethod) ? `<option selected>${escapeHtml(order.paymentMethod)}</option>` : ''}
             <option ${order.paymentMethod==='PIX'?'selected':''}>PIX</option>
             <option ${order.paymentMethod==='Cartão'?'selected':''}>Cartão</option>
             <option ${order.paymentMethod==='Cartão de débito'?'selected':''}>Cartão de débito</option>
@@ -1654,6 +1756,14 @@ function escapeHtml(str){ return String(str==null?'':str).replace(/[&<>"']/g, c=
 function escapeAttr(str){ return escapeHtml(str); }
 </script>
 
+<script>
+(function(){
+  const sb = document.getElementById('sidebar'), bd = document.getElementById('drawerBackdrop'), btn = document.getElementById('menuBtn');
+  if(!btn) return;
+  btn.addEventListener('click', ()=>{ sb.classList.add('open'); bd.classList.add('open'); });
+  bd.addEventListener('click', ()=>{ sb.classList.remove('open'); bd.classList.remove('open'); });
+})();
+</script>
 <div id="syncBadge" style="display:none; position:fixed; bottom:22px; right:22px; z-index:400;
   background:var(--charcoal); border:1px solid var(--panel-line); color:var(--muted);
   font-family:'Jost',sans-serif; font-size:0.72rem; letter-spacing:0.06em;
