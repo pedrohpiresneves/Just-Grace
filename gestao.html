@@ -529,10 +529,10 @@ function boot(){
     goTo(navItems.some(n=>n.id===currentView && can(n.perm)) ? currentView : 'dashboard');
   }catch(err){
     console.error('Erro ao abrir o painel:', err);
-    alert('Entramos, mas houve um erro ao carregar o painel. Veja o console (F12) ou avise o suporte.');
+    alert('Entramos, mas houve um erro ao carregar o painel.\n\nDetalhe técnico: ' + (err && err.message ? err.message : err));
   }
 }
-if(session) boot();
+// (o painel é aberto no fim deste script, depois de todas as constantes serem criadas)
 
 function renderNav(){
   const nav = document.getElementById('navList');
@@ -1754,6 +1754,9 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 
 function escapeHtml(str){ return String(str==null?'':str).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 function escapeAttr(str){ return escapeHtml(str); }
+
+/* ===== abre o painel se já houver sessão (precisa ficar no fim do script) ===== */
+if(session) boot();
 </script>
 
 <script>

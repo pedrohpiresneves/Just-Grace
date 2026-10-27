@@ -477,7 +477,10 @@
     saveProducts(list){ write(KEYS.products, list); pushProductsToServer(list); },
 
     // pedidos
-    getOrders(){ return read(KEYS.orders, []); },
+    getOrders(){
+      // tolera pedidos incompletos (sem itens, sem data...) para o painel nunca quebrar
+      return read(KEYS.orders, []).filter(o => o && typeof o === 'object').map(o => ({ ...o, items: Array.isArray(o.items) ? o.items : [] }));
+    },
     saveOrders(list){ return saveMerged(KEYS.orders, 'orders', list); },
 
     // clientes
