@@ -1100,7 +1100,13 @@ function openOrderModal(order){
   document.getElementById('mClose').addEventListener('click', closeModal);
   document.getElementById('mClose2').addEventListener('click', closeModal);
   document.getElementById('mDeleteOrder').addEventListener('click', ()=>{
-    if(!confirm(`Excluir DEFINITIVAMENTE o pedido ${order.id}? Isso não pode ser desfeito.`)) return;
+    const current = S.getOrders().find(o=>o.id===order.id) || order;
+    const willReturn = orderStockDeducted(current) && (current.items||[]).length > 0;
+    if(!confirm(`Excluir DEFINITIVAMENTE o pedido ${order.id}? Isso não pode ser desfeito.` + (willReturn ? '\n\nAs peças deste pedido voltarão automaticamente para o estoque.' : ''))) return;
+    if(willReturn){
+      changeOrderStock(current, +1);
+      S.addAudit('stock_return', `Pedido ${order.id} excluído: peças devolvidas ao estoque.`, session.name);
+    }
     const orders = S.getOrders().filter(o=>o.id!==order.id);
     S.saveOrders(orders);
     S.addAudit('order_delete', `Pedido ${order.id} excluído definitivamente.`, session.name);
@@ -1138,6 +1144,18 @@ function openOrderModal(order){
   });
 }
 
+/* O estoque do pedido está baixado? Pedidos da loja baixam na compra; só viram "não baixado" depois de cancelados/devolvidos. */
+function orderStockDeducted(order){ return order.stockDeducted !== false; }
+/* sinal -1 baixa as peças do estoque, +1 devolve (acha o produto pelo código ou pelo nome, no tamanho certo). */
+function changeOrderStock(order, sign){
+  const products = S.getProducts();
+  (order.items || []).forEach(item=>{
+    const p = products.find(x=>x.id===item.productId) || products.find(x=>x.name===item.name);
+    if(p) S.adjustStock(p, sign * itemQty(item), item.size || 'Único');
+  });
+  S.saveProducts(products);
+}
+
 function updateOrderStatus(order, status, paymentMethod, label){
   const orders = S.getOrders();
   const idx = orders.findIndex(o=>o.id===order.id);
@@ -1149,22 +1167,12 @@ function updateOrderStatus(order, status, paymentMethod, label){
   orders[idx].events = orders[idx].events || [];
   orders[idx].events.unshift({ id:S.uid('ev'), label, actor:session.name, createdAt:S.nowISO() });
 
-  // baixa/restaura estoque quando o status vira/deixa de ser pago
-  if(!wasPaid && nowPaid && !orders[idx].stockDeducted){
-    const products = S.getProducts();
-    orders[idx].items.forEach(item=>{
-      const p = products.find(x=>x.id===item.productId);
-      if(p) S.adjustStock(p, -item.quantity, item.size);
-    });
-    S.saveProducts(products);
+  // baixa/restaura estoque: pedidos da loja já baixam o estoque na compra; cancelar devolve as peças
+  if(!wasPaid && nowPaid && !orderStockDeducted(orders[idx])){
+    changeOrderStock(orders[idx], -1);
     orders[idx].stockDeducted = true;
-  } else if(wasPaid && status==='cancelled' && orders[idx].stockDeducted){
-    const products = S.getProducts();
-    orders[idx].items.forEach(item=>{
-      const p = products.find(x=>x.id===item.productId);
-      if(p) S.adjustStock(p, item.quantity, item.size);
-    });
-    S.saveProducts(products);
+  } else if(status==='cancelled' && orderStockDeducted(orders[idx])){
+    changeOrderStock(orders[idx], +1);
     orders[idx].stockDeducted = false;
   }
 
