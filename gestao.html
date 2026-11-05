@@ -604,7 +604,6 @@ function renderDashboard(body){
       <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>faturamento (com ${money(pf.delivery)} de frete) − produtos ${money(pf.cost)} − taxas de pagamento ${money(pf.fees)} − despesas ${money(pf.expenses)}</small></div>
       <div class="kpi"><span>Clientes</span><strong>${customers.length}</strong><small>cadastrados</small></div>
     </div>
-    ${paidNoticeHTML(orders)}
     ${pendingContact ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há ${pendingContact} pedido(s) sem pagamento ou contato concluído há mais de 15 minutos.</div>` : ''}
     <div class="panel-block">
       <h3>Pedidos Recentes</h3>
@@ -616,7 +615,6 @@ function renderDashboard(body){
     </div>
   `;
   attachOrderRowEvents(body);
-  attachPaidNotice(body);
   attachProductCardEvents(body);
 }
 
@@ -962,7 +960,6 @@ function renderOrders(body, actions){
   const paid = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).length;
   const revenue = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).reduce((s,o)=>s+o.totalCents,0);
   body.innerHTML = `
-    ${paidNoticeHTML(orders)}
     ${followUp ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há pedidos sem pagamento ou contato concluído há mais de 15 minutos. Use o WhatsApp cadastrado para recontato.</div>` : ''}
     <div class="kpi-grid">
       <div class="kpi"><span>Contato Pendente</span><strong>${followUp}</strong></div>
@@ -975,7 +972,6 @@ function renderOrders(body, actions){
     </div>
   `;
   attachOrderRowEvents(body);
-  attachPaidNotice(body);
   document.getElementById('newOrderBtn').addEventListener('click', openManualOrderModal);
   document.getElementById('backupOrdersBtn').addEventListener('click', ()=>{
     const blob = new Blob([JSON.stringify(S.getOrders(), null, 2)], { type:'application/json' });
@@ -1075,9 +1071,6 @@ function openOrderModal(order){
           </select>
         </div>
       </div>
-      <label style="display:flex; align-items:center; gap:10px; text-transform:none; letter-spacing:0; font-size:0.86rem; color:var(--ivory); margin:4px 0 0; cursor:pointer;">
-        <input type="checkbox" id="fSendWa" checked style="width:auto;"> Ao salvar uma mudança de situação, abrir o WhatsApp com a mensagem pronta para o cliente
-      </label>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Itens (${qty} peça(s))</h3>
       <table class="order-items-table">
         ${order.items.map((i,idx)=>{
@@ -1101,19 +1094,11 @@ function openOrderModal(order){
       <button class="btn danger" id="mDeleteOrder" style="margin-right:auto;">Excluir pedido</button>
       <button class="btn danger" id="mCancelOrder" ${order.status==='cancelled'?'disabled':''}>Cancelar pedido</button>
       <button class="btn" id="mClose2">Fechar</button>
-      <button class="btn" id="mSendWa">Enviar WhatsApp</button>
       <button class="btn primary" id="mSave">Salvar andamento</button>
     </footer>
   `, 'wide');
   document.getElementById('mClose').addEventListener('click', closeModal);
   document.getElementById('mClose2').addEventListener('click', closeModal);
-  document.getElementById('mSendWa').addEventListener('click', ()=>{
-    const st = document.getElementById('fStatus').value;
-    const fresh = S.getOrders().find(o=>o.id===order.id) || order;
-    if(!openOrderWhatsApp(fresh, ['paid','preparing','shipped','fulfilled'].includes(st) ? st : fresh.status)){
-      alert('Não há mensagem pronta para esta situação ou o pedido não tem WhatsApp. Se o navegador bloqueou a janela, permita pop-ups para este site.');
-    }
-  });
   document.getElementById('mDeleteOrder').addEventListener('click', ()=>{
     const current = S.getOrders().find(o=>o.id===order.id) || order;
     const willReturn = orderStockDeducted(current) && (current.items||[]).length > 0;
@@ -1154,72 +1139,8 @@ function openOrderModal(order){
         S.addAudit('order_size', `Pedido ${order.id}: ${changes.join('; ')}.`, session.name);
       }
     }
-    const prevStatus = (S.getOrders().find(o=>o.id===order.id) || order).status;
     updateOrderStatus(order, status, pay, `Andamento atualizado para "${S.orderStatusLabel(status)}".`);
-    const sendWa = document.getElementById('fSendWa');
-    if(sendWa && sendWa.checked && status !== prevStatus){
-      const fresh = S.getOrders().find(o=>o.id===order.id);
-      if(fresh) openOrderWhatsApp(fresh, status);
-    }
     closeModal(); renderView();
-  });
-}
-
-/* ===== Mensagem automática no WhatsApp (abre a conversa com o texto pronto; é só tocar em enviar) ===== */
-/* Cliente recorrente: já existe outro pedido (não cancelado) com o mesmo telefone ou e-mail. */
-function isReturningCustomer(order){
-  const ph = phoneDigits(order.customerPhone||'').slice(-11);
-  const em = String(order.customerEmail||'').trim().toLowerCase();
-  return S.getOrders().some(o=>{
-    if(o.id === order.id || o.status === 'cancelled') return false;
-    const p2 = phoneDigits(o.customerPhone||'').slice(-11);
-    const e2 = String(o.customerEmail||'').trim().toLowerCase();
-    return (ph.length>=10 && p2===ph) || (em && e2===em);
-  });
-}
-function orderWhatsAppMessage(order, status){
-  const first = String(order.customerName || '').trim().split(/\s+/)[0] || 'tudo bem';
-  const pecas = (order.items||[]).map(i=> `• ${itemQty(i)}x ${i.name}${itemSizeText(i) ? ' (Tam. '+itemSizeText(i)+')' : ''}`).join('\n');
-  const link = new URL('rastreio.html?pedido=' + encodeURIComponent(order.id), location.href).href;
-  const texts = {
-    paid: isReturningCustomer(order)
-      ? `Olha só quem tá curtindo nosso estilo! \n\nVimos que você efetuou uma nova compra no nosso site e ficamos muito felizes em ver sua satisfação e boa escolha 😎\n\nAbaixo, segue o link para acompanhamento do seu pedido: *${order.id}*\n\nhttps://justgrace.com.br/rastreio.html?pedido=${encodeURIComponent(order.id)}`
-      : `Seja bem-vindo a Just Grace 🤩\n\nSomos o WhatsApp Oficial da loja. Vimos que você efetuou sua primeira compra no nosso site e gostaríamos de lhe parabenizar pela sua excelente escolha.\n\nAbaixo, segue o link para acompanhamento do seu pedido: *${order.id}*\n\nhttps://justgrace.com.br/rastreio.html?pedido=${encodeURIComponent(order.id)}`,
-    preparing: `Olá, ${first}! Seu pedido *${order.id}* já está em separação. Em breve avisamos quando sair para entrega.\n\nAcompanhe: ${link}`,
-    shipped: `Olá, ${first}! Seu pedido *${order.id}* está a caminho. 🚚\n\nAcompanhe: ${link}`,
-    fulfilled: `Olá, ${first}! Seu pedido *${order.id}* foi entregue. Esperamos que você ame! 🤍\n\nSe puder, nos conte o que achou e marque @justgraceoficial nas suas fotos.`,
-  };
-  return texts[status] || '';
-}
-function openOrderWhatsApp(order, status){
-  const msg = orderWhatsAppMessage(order, status);
-  if(!msg || !order.customerPhone) return false;
-  const w = window.open('https://wa.me/' + phoneDigits(order.customerPhone) + '?text=' + encodeURIComponent(msg), '_blank');
-  if(w && status === 'paid'){
-    const all = S.getOrders(), i = all.findIndex(o=>o.id===order.id);
-    if(i >= 0 && !all[i].waNotified){ all[i].waNotified = true; S.saveOrders(all); }
-  }
-  return !!w;
-}
-
-/* Destaque: pagamento aprovado automaticamente pelo Mercado Pago, cliente ainda sem mensagem. */
-function paidNoticeHTML(orders){
-  const list = orders.filter(o=>o.autoPaid && !o.waNotified && o.status==='paid');
-  if(!list.length) return '';
-  return `<div class="alert-box" style="border-color:rgba(143,176,138,0.45); background:rgba(143,176,138,0.08);">
-    <b style="color:var(--ok);">Pagamento aprovado — avise o cliente</b>
-    ${list.map(o=>`<div style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:8px;">
-      <span>${escapeHtml(o.id)} · ${escapeHtml(o.customerName||'')} · ${money(o.totalCents||0)}</span>
-      <button type="button" class="btn" data-paid-wa="${escapeAttr(o.id)}">Enviar WhatsApp</button>
-    </div>`).join('')}
-  </div>`;
-}
-function attachPaidNotice(root){
-  root.querySelectorAll('[data-paid-wa]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const o = S.getOrders().find(x=>x.id===btn.dataset.paidWa);
-      if(o && openOrderWhatsApp(o, 'paid')) renderView();
-    });
   });
 }
 
