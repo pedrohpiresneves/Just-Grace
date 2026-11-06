@@ -1281,7 +1281,7 @@ function phoneKey(v){ return String(v||'').replace(/\D/g,'').slice(-11); }
 function openManualOrderModal(){
   const products = S.getProducts().filter(p=>p.status==='active');
   const customers = S.getCustomers();
-  manualOrderDraft = { customerId:'', customerName:'', customerPhone:'', paymentMethod:'PIX', items:[{productId:'', qty:1}], address:{}, addressTouched:false, addressAuto:false };
+  manualOrderDraft = { customerId:'', customerName:'', customerPhone:'', paymentMethod:'PIX', payStatus:'paid', items:[{productId:'', qty:1}], address:{}, addressTouched:false, addressAuto:false };
   renderManualOrderModal(products, customers);
 }
 
@@ -1314,6 +1314,12 @@ function renderManualOrderModal(products, customers){
         ${d.items.map((it,i)=>manualItemRowHTML(it,i,products)).join('')}
       </div>
       <button class="btn" id="addItemBtn" style="margin-bottom:16px;">＋ Adicionar peça</button>
+      <div class="field"><label>Situação Do Pedido</label>
+        <select id="fPayStatus">
+          <option value="paid" ${d.payStatus!=='payment_pending'?'selected':''}>Pagamento confirmado</option>
+          <option value="payment_pending" ${d.payStatus==='payment_pending'?'selected':''}>Aguardando pagamento</option>
+        </select>
+      </div>
       <div class="field"><label>Forma De Pagamento</label>
         <select id="fPayment">
           <option value="PIX" ${d.paymentMethod==='PIX'?'selected':''}>PIX</option>
@@ -1327,8 +1333,8 @@ function renderManualOrderModal(products, customers){
           <option value="QR Code — cartão de crédito" ${d.paymentMethod==='QR Code — cartão de crédito'?'selected':''}>QR Code — cartão de crédito</option>
         </select>
       </div>
-      <div class="totals-row grand"><span>Total (venda confirmada)</span><b>${money(subtotal)}</b></div>
-      <div class="field-hint">O pedido será registrado como pago e o estoque das peças será baixado imediatamente.</div>
+      <div class="totals-row grand"><span>${d.payStatus==='payment_pending' ? 'Total (aguardando pagamento)' : 'Total (venda confirmada)'}</span><b>${money(subtotal)}</b></div>
+      <div class="field-hint">${d.payStatus==='payment_pending' ? 'O pedido ficará como aguardando pagamento. As peças já ficam reservadas no estoque e voltam se o pedido for cancelado. Depois é só mudar a situação para Pagamento confirmado.' : 'O pedido será registrado como pago e o estoque das peças será baixado imediatamente.'}</div>
     </div>
     <footer>
       <button class="btn" id="mCancel">Cancelar</button>
@@ -1364,6 +1370,7 @@ function renderManualOrderModal(products, customers){
     if(el) el.addEventListener('input', ()=>{ d.address[k] = el.value; d.addressTouched = true; });
   });
   document.getElementById('fPayment').addEventListener('change', e=> d.paymentMethod = e.target.value);
+  document.getElementById('fPayStatus').addEventListener('change', e=>{ d.payStatus = e.target.value; renderManualOrderModal(products, customers); });
   document.getElementById('addItemBtn').addEventListener('click', ()=>{
     d.items.push({ productId:'', qty:1 });
     renderManualOrderModal(products, customers);
@@ -1396,14 +1403,15 @@ function renderManualOrderModal(products, customers){
       return { productId:p.id, name:p.name, size, quantity:it.qty, unitPriceCents:p.priceCents };
     });
     const subtotalCents = orderItems.reduce((s,i)=>s+i.unitPriceCents*i.quantity,0);
+    const pending = d.payStatus === 'payment_pending';
     const order = {
       id: S.nextOrderId(S.getOrders()),
       customerName: d.customerName.trim(), customerPhone: d.customerPhone.trim(),
       subtotalCents, deliveryCents:0, discountCents:0, totalCents: subtotalCents,
-      status:'paid', deliveryStatus:'delivered', paymentMethod: d.paymentMethod,
+      status: pending ? 'payment_pending' : 'paid', deliveryStatus: pending ? 'pending' : 'delivered', paymentMethod: d.paymentMethod,
       stockDeducted:true, items:orderItems,
       address: addrHasData(d.address) ? Object.assign({}, d.address) : null,
-      events:[{ id:S.uid('ev'), label:'Pedido gerado manualmente e marcado como pago', actor:session.name, createdAt:S.nowISO() }],
+      events:[{ id:S.uid('ev'), label: pending ? 'Pedido gerado manualmente — aguardando pagamento' : 'Pedido gerado manualmente e marcado como pago', actor:session.name, createdAt:S.nowISO() }],
       createdAt: S.nowISO(),
     };
     const orders = S.getOrders(); orders.unshift(order); S.saveOrders(orders);
