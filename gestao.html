@@ -604,6 +604,7 @@ function renderDashboard(body){
       <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>faturamento (com ${money(pf.delivery)} de frete) − produtos ${money(pf.cost)} − taxas de pagamento ${money(pf.fees)} − despesas ${money(pf.expenses)}</small></div>
       <div class="kpi"><span>Clientes</span><strong>${customers.length}</strong><small>cadastrados</small></div>
     </div>
+    ${paidNoticeHTML(orders)}
     ${pendingContact ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há ${pendingContact} pedido(s) sem pagamento ou contato concluído há mais de 15 minutos.</div>` : ''}
     <div class="panel-block">
       <h3>Pedidos Recentes</h3>
@@ -615,6 +616,7 @@ function renderDashboard(body){
     </div>
   `;
   attachOrderRowEvents(body);
+  attachPaidNotice(body);
   attachProductCardEvents(body);
 }
 
@@ -758,7 +760,8 @@ function openProductModal(product){
         <div class="field wide"><label>Nome</label><input id="fName" value="${escapeAttr(p.name)}" placeholder="Ex.: Ave Maria — Manuscrito"></div>
         <div class="field"><label>Categoria</label>
           <select id="fCat">
-            <option value="basicas" ${p.cat==='basicas'?'selected':''}>Camisas básicas</option>
+            <option value="basicas" ${p.cat==='basicas'?'selected':''}>Básicas</option>
+            <option value="maria" ${p.cat==='maria'?'selected':''}>Maria</option>
           </select>
         </div>
         <div class="field"><label>Etiqueta</label><input id="fTag" value="${escapeAttr(p.tag)}" placeholder="Camiseta"></div>
@@ -960,6 +963,7 @@ function renderOrders(body, actions){
   const paid = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).length;
   const revenue = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).reduce((s,o)=>s+o.totalCents,0);
   body.innerHTML = `
+    ${paidNoticeHTML(orders)}
     ${followUp ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há pedidos sem pagamento ou contato concluído há mais de 15 minutos. Use o WhatsApp cadastrado para recontato.</div>` : ''}
     <div class="kpi-grid">
       <div class="kpi"><span>Contato Pendente</span><strong>${followUp}</strong></div>
@@ -972,6 +976,7 @@ function renderOrders(body, actions){
     </div>
   `;
   attachOrderRowEvents(body);
+  attachPaidNotice(body);
   document.getElementById('newOrderBtn').addEventListener('click', openManualOrderModal);
   document.getElementById('backupOrdersBtn').addEventListener('click', ()=>{
     const blob = new Blob([JSON.stringify(S.getOrders(), null, 2)], { type:'application/json' });
@@ -1071,6 +1076,9 @@ function openOrderModal(order){
           </select>
         </div>
       </div>
+      <label style="display:flex; align-items:center; gap:10px; text-transform:none; letter-spacing:0; font-size:0.86rem; color:var(--ivory); margin:4px 0 0; cursor:pointer;">
+        <input type="checkbox" id="fSendWa" checked style="width:auto;"> Ao salvar uma mudança de situação, abrir o WhatsApp com a mensagem pronta para o cliente
+      </label>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Itens (${qty} peça(s))</h3>
       <table class="order-items-table">
         ${order.items.map((i,idx)=>{
@@ -1094,15 +1102,23 @@ function openOrderModal(order){
       <button class="btn danger" id="mDeleteOrder" style="margin-right:auto;">Excluir pedido</button>
       <button class="btn danger" id="mCancelOrder" ${order.status==='cancelled'?'disabled':''}>Cancelar pedido</button>
       <button class="btn" id="mClose2">Fechar</button>
+      <button class="btn" id="mSendWa">Enviar WhatsApp</button>
       <button class="btn primary" id="mSave">Salvar andamento</button>
     </footer>
   `, 'wide');
   document.getElementById('mClose').addEventListener('click', closeModal);
   document.getElementById('mClose2').addEventListener('click', closeModal);
+  document.getElementById('mSendWa').addEventListener('click', ()=>{
+    const st = document.getElementById('fStatus').value;
+    const fresh = S.getOrders().find(o=>o.id===order.id) || order;
+    if(!openOrderWhatsApp(fresh, ['paid','preparing','shipped','fulfilled'].includes(st) ? st : fresh.status)){
+      alert('Não há mensagem pronta para esta situação ou o pedido não tem WhatsApp. Se o navegador bloqueou a janela, permita pop-ups para este site.');
+    }
+  });
   document.getElementById('mDeleteOrder').addEventListener('click', ()=>{
     const current = S.getOrders().find(o=>o.id===order.id) || order;
-    const willReturn = orderStockDeducted(current) && (current.items||[]).length > 0;
-    if(!confirm(`Excluir DEFINITIVAMENTE o pedido ${order.id}? Isso não pode ser desfeito.` + (willReturn ? '\n\nAs peças deste pedido voltarão automaticamente para o estoque.' : ''))) return;
+    const willReturn = orderStockDeducted(current) && current.status !== 'cancelled' && (current.items||[]).length > 0;
+    if(!confirm(`Excluir DEFINITIVAMENTE o pedido ${order.id}? Isso não pode ser desfeito.` + (willReturn ? '\n\nAs peças deste pedido voltam automaticamente ao estoque.' : ''))) return;
     if(willReturn){
       changeOrderStock(current, +1);
       S.addAudit('stock_return', `Pedido ${order.id} excluído: peças devolvidas ao estoque.`, session.name);
@@ -1139,8 +1155,72 @@ function openOrderModal(order){
         S.addAudit('order_size', `Pedido ${order.id}: ${changes.join('; ')}.`, session.name);
       }
     }
+    const prevStatus = (S.getOrders().find(o=>o.id===order.id) || order).status;
     updateOrderStatus(order, status, pay, `Andamento atualizado para "${S.orderStatusLabel(status)}".`);
+    const sendWa = document.getElementById('fSendWa');
+    if(sendWa && sendWa.checked && status !== prevStatus){
+      const fresh = S.getOrders().find(o=>o.id===order.id);
+      if(fresh) openOrderWhatsApp(fresh, status);
+    }
     closeModal(); renderView();
+  });
+}
+
+/* ===== Mensagem automática no WhatsApp (abre a conversa com o texto pronto; é só tocar em enviar) ===== */
+/* Cliente recorrente: já existe outro pedido (não cancelado) com o mesmo telefone ou e-mail. */
+function isReturningCustomer(order){
+  const ph = phoneDigits(order.customerPhone||'').slice(-11);
+  const em = String(order.customerEmail||'').trim().toLowerCase();
+  return S.getOrders().some(o=>{
+    if(o.id === order.id || o.status === 'cancelled') return false;
+    const p2 = phoneDigits(o.customerPhone||'').slice(-11);
+    const e2 = String(o.customerEmail||'').trim().toLowerCase();
+    return (ph.length>=10 && p2===ph) || (em && e2===em);
+  });
+}
+function orderWhatsAppMessage(order, status){
+  const first = String(order.customerName || '').trim().split(/\s+/)[0] || 'tudo bem';
+  const pecas = (order.items||[]).map(i=> `• ${itemQty(i)}x ${i.name}${itemSizeText(i) ? ' (Tam. '+itemSizeText(i)+')' : ''}`).join('\n');
+  const link = new URL('rastreio.html?pedido=' + encodeURIComponent(order.id), location.href).href;
+  const texts = {
+    paid: isReturningCustomer(order)
+      ? `Olha só quem tá curtindo nosso estilo! \n\nVimos que você efetuou uma nova compra no nosso site e ficamos muito felizes em ver sua satisfação e boa escolha 😎\n\nAbaixo, segue o link para acompanhamento do seu pedido: *${order.id}*\n\nhttps://justgrace.com.br/rastreio.html?pedido=${encodeURIComponent(order.id)}`
+      : `Seja bem-vindo a Just Grace 🤩\n\nSomos o WhatsApp Oficial da loja. Vimos que você efetuou sua primeira compra no nosso site e gostaríamos de lhe parabenizar pela sua excelente escolha.\n\nAbaixo, segue o link para acompanhamento do seu pedido: *${order.id}*\n\nhttps://justgrace.com.br/rastreio.html?pedido=${encodeURIComponent(order.id)}`,
+    preparing: `Olá, ${first}! Seu pedido *${order.id}* já está em separação. Em breve avisamos quando sair para entrega.\n\nAcompanhe: ${link}`,
+    shipped: `Olá, ${first}! Seu pedido *${order.id}* está a caminho. 🚚\n\nAcompanhe: ${link}`,
+    fulfilled: `Olá, ${first}! Seu pedido *${order.id}* foi entregue. Esperamos que você ame! 🤍\n\nSe puder, nos conte o que achou e marque @justgraceoficial nas suas fotos.`,
+  };
+  return texts[status] || '';
+}
+function openOrderWhatsApp(order, status){
+  const msg = orderWhatsAppMessage(order, status);
+  if(!msg || !order.customerPhone) return false;
+  const w = window.open('https://wa.me/' + phoneDigits(order.customerPhone) + '?text=' + encodeURIComponent(msg), '_blank');
+  if(w && status === 'paid'){
+    const all = S.getOrders(), i = all.findIndex(o=>o.id===order.id);
+    if(i >= 0 && !all[i].waNotified){ all[i].waNotified = true; S.saveOrders(all); }
+  }
+  return !!w;
+}
+
+/* Destaque: pagamento aprovado automaticamente pelo Mercado Pago, cliente ainda sem mensagem. */
+function paidNoticeHTML(orders){
+  const list = orders.filter(o=>o.autoPaid && !o.waNotified && o.status==='paid');
+  if(!list.length) return '';
+  return `<div class="alert-box" style="border-color:rgba(143,176,138,0.45); background:rgba(143,176,138,0.08);">
+    <b style="color:var(--ok);">Pagamento aprovado — avise o cliente</b>
+    ${list.map(o=>`<div style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:8px;">
+      <span>${escapeHtml(o.id)} · ${escapeHtml(o.customerName||'')} · ${money(o.totalCents||0)}</span>
+      <button type="button" class="btn" data-paid-wa="${escapeAttr(o.id)}">Enviar WhatsApp</button>
+    </div>`).join('')}
+  </div>`;
+}
+function attachPaidNotice(root){
+  root.querySelectorAll('[data-paid-wa]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const o = S.getOrders().find(x=>x.id===btn.dataset.paidWa);
+      if(o && openOrderWhatsApp(o, 'paid')) renderView();
+    });
   });
 }
 
@@ -1181,10 +1261,27 @@ function updateOrderStatus(order, status, paymentMethod, label){
 }
 
 let manualOrderDraft = null;
+const ADDR_FIELDS = [['street','Rua'],['number','Número'],['complement','Complemento'],['neighborhood','Bairro'],['city','Cidade'],['state','UF'],['postalCode','CEP']];
+function addrHasData(a){ return !!(a && typeof a === 'object' && ADDR_FIELDS.some(([k])=>String(a[k]||'').trim())); }
+// procura o último endereço conhecido de um cliente (pelo WhatsApp): primeiro no cadastro do cliente,
+// depois em qualquer pedido que ainda exista. O cadastro do cliente continua mesmo se o pedido foi excluído.
+function findKnownAddress(phone, customerId){
+  const digits = phoneKey(phone);
+  if(!customerId && digits.length < 10) return null;
+  const customers = S.getCustomers();
+  const c = customers.find(x=> (customerId && x.id===customerId) || (digits.length >= 10 && phoneKey(x.phone)===digits));
+  if(c && addrHasData(c.address)) return Object.assign({}, c.address);
+  if(digits.length >= 10){
+    const o = S.getOrders().find(x=> phoneKey(x.customerPhone)===digits && addrHasData(x.address));
+    if(o) return Object.assign({}, o.address);
+  }
+  return null;
+}
+function phoneKey(v){ return String(v||'').replace(/\D/g,'').slice(-11); }
 function openManualOrderModal(){
   const products = S.getProducts().filter(p=>p.status==='active');
   const customers = S.getCustomers();
-  manualOrderDraft = { customerId:'', customerName:'', customerPhone:'', paymentMethod:'PIX', items:[{productId:'', qty:1}] };
+  manualOrderDraft = { customerId:'', customerName:'', customerPhone:'', paymentMethod:'PIX', items:[{productId:'', qty:1}], address:{}, addressTouched:false, addressAuto:false };
   renderManualOrderModal(products, customers);
 }
 
@@ -1206,6 +1303,11 @@ function renderManualOrderModal(products, customers){
       <div class="grid2">
         <div class="field"><label>Nome Do Cliente</label><input id="fCName" value="${escapeAttr(d.customerName)}" placeholder="Nome completo"></div>
         <div class="field"><label>WhatsApp</label><input id="fCPhone" value="${escapeAttr(d.customerPhone)}" placeholder="(00) 00000-0000"></div>
+      </div>
+      <h3 style="margin:18px 0 6px; font-size:1.02rem;">Endereço de entrega</h3>
+      <div class="field-hint" id="addrAutoHint" style="margin:0 0 8px; ${d.addressAuto ? '' : 'display:none;'}">Endereço preenchido automaticamente com o último cadastro deste cliente. Pode editar.</div>
+      <div class="grid2">
+        ${ADDR_FIELDS.map(([k,l])=>`<div class="field"><label>${l}</label><input id="fAddr_${k}" value="${escapeAttr((d.address||{})[k]||'')}"></div>`).join('')}
       </div>
       <h3 style="margin:18px 0 10px; font-size:1.02rem;">Itens do pedido</h3>
       <div id="manualItems">
@@ -1241,10 +1343,26 @@ function renderManualOrderModal(products, customers){
     d.customerId = e.target.value;
     d.customerName = c ? c.name : d.customerName;
     d.customerPhone = c ? c.phone : d.customerPhone;
+    if(c){
+      const known = findKnownAddress(c.phone, c.id);
+      if(known){ d.address = known; d.addressTouched = false; d.addressAuto = true; }
+    }
     renderManualOrderModal(products, customers);
   });
   document.getElementById('fCName').addEventListener('input', e=> d.customerName = e.target.value);
-  document.getElementById('fCPhone').addEventListener('input', e=> d.customerPhone = e.target.value);
+  document.getElementById('fCPhone').addEventListener('input', e=>{
+    d.customerPhone = e.target.value;
+    if(d.addressTouched || addrHasData(d.address)) return;
+    const known = findKnownAddress(d.customerPhone, '');
+    if(!known) return;
+    d.address = known; d.addressAuto = true;
+    ADDR_FIELDS.forEach(([k])=>{ const el = document.getElementById('fAddr_'+k); if(el) el.value = known[k] || ''; });
+    const h = document.getElementById('addrAutoHint'); if(h) h.style.display = 'block';
+  });
+  ADDR_FIELDS.forEach(([k])=>{
+    const el = document.getElementById('fAddr_'+k);
+    if(el) el.addEventListener('input', ()=>{ d.address[k] = el.value; d.addressTouched = true; });
+  });
   document.getElementById('fPayment').addEventListener('change', e=> d.paymentMethod = e.target.value);
   document.getElementById('addItemBtn').addEventListener('click', ()=>{
     d.items.push({ productId:'', qty:1 });
@@ -1284,6 +1402,7 @@ function renderManualOrderModal(products, customers){
       subtotalCents, deliveryCents:0, discountCents:0, totalCents: subtotalCents,
       status:'paid', deliveryStatus:'delivered', paymentMethod: d.paymentMethod,
       stockDeducted:true, items:orderItems,
+      address: addrHasData(d.address) ? Object.assign({}, d.address) : null,
       events:[{ id:S.uid('ev'), label:'Pedido gerado manualmente e marcado como pago', actor:session.name, createdAt:S.nowISO() }],
       createdAt: S.nowISO(),
     };
@@ -1298,6 +1417,7 @@ function renderManualOrderModal(products, customers){
     let c = custs.find(x=>x.phone===order.customerPhone);
     if(!c){ c = { id:S.uid('cli'), name:order.customerName, phone:order.customerPhone, email:'', createdAt:S.nowISO(), internalNotes:'', nextContactAt:'', contacts:[] }; custs.unshift(c); }
     else c.name = order.customerName;
+    if(order.address) c.address = order.address;
     S.saveCustomers(custs);
     S.addAudit('order_create', `Pedido ${order.id} gerado manualmente por ${session.name} (${money(subtotalCents)}).`, session.name);
     closeModal(); goTo('orders');
