@@ -585,7 +585,8 @@
 
 <div class="tabs reveal" id="tabs">
   <button class="tab active" data-cat="all">Tudo</button>
-  <button class="tab" data-cat="basicas">Camisas Básicas</button>
+  <button class="tab" data-cat="basicas">BÁSICAS</button>
+  <button class="tab" data-cat="maria">MARIA</button>
 </div>
 
 <section style="padding-top:0;">
@@ -771,6 +772,7 @@ function loadStoreProducts(){
     const sizes = window.JGStore ? window.JGStore.normalizeSizes(p) : (p.sizes || [{label:'Único', stock:0}]);
     return {
       cat: p.cat,
+      maria: /\bfaca[\s\-]*se\b/.test(String(p.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()),
       tag: p.tag,
       name: p.name,
       desc: p.desc,
@@ -802,7 +804,7 @@ function observeReveals(root){
 
 function render(filter){
   grid.innerHTML = '';
-  products.filter(p => filter==='all' || p.cat===filter).forEach((p,i)=>{
+  products.filter(p => filter==='all' || p.cat===filter || (filter==='maria' && p.maria)).forEach((p,i)=>{
     const card = document.createElement('div');
     card.className = 'card reveal';
     card.style.transitionDelay = (i%3)*0.09 + 's';
