@@ -604,7 +604,6 @@ function renderDashboard(body){
       <div class="kpi"><span>Lucro</span><strong style="color:${pf.profit>=0?'var(--ok)':'var(--danger)'}">${money(pf.profit)}</strong><small>faturamento (com ${money(pf.delivery)} de frete) − produtos ${money(pf.cost)} − taxas de pagamento ${money(pf.fees)} − despesas ${money(pf.expenses)}</small></div>
       <div class="kpi"><span>Clientes</span><strong>${customers.length}</strong><small>cadastrados</small></div>
     </div>
-    ${paidNoticeHTML(orders)}
     ${pendingContact ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há ${pendingContact} pedido(s) sem pagamento ou contato concluído há mais de 15 minutos.</div>` : ''}
     <div class="panel-block">
       <h3>Pedidos Recentes</h3>
@@ -616,7 +615,6 @@ function renderDashboard(body){
     </div>
   `;
   attachOrderRowEvents(body);
-  attachPaidNotice(body);
   attachProductCardEvents(body);
 }
 
@@ -963,7 +961,6 @@ function renderOrders(body, actions){
   const paid = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).length;
   const revenue = orders.filter(o=>['paid','preparing','shipped','fulfilled'].includes(o.status)).reduce((s,o)=>s+o.totalCents,0);
   body.innerHTML = `
-    ${paidNoticeHTML(orders)}
     ${followUp ? `<div class="alert-box"><b>Clientes aguardando contato</b>Há pedidos sem pagamento ou contato concluído há mais de 15 minutos. Use o WhatsApp cadastrado para recontato.</div>` : ''}
     <div class="kpi-grid">
       <div class="kpi"><span>Contato Pendente</span><strong>${followUp}</strong></div>
@@ -976,7 +973,6 @@ function renderOrders(body, actions){
     </div>
   `;
   attachOrderRowEvents(body);
-  attachPaidNotice(body);
   document.getElementById('newOrderBtn').addEventListener('click', openManualOrderModal);
   document.getElementById('backupOrdersBtn').addEventListener('click', ()=>{
     const blob = new Blob([JSON.stringify(S.getOrders(), null, 2)], { type:'application/json' });
@@ -1076,9 +1072,6 @@ function openOrderModal(order){
           </select>
         </div>
       </div>
-      <label style="display:flex; align-items:center; gap:10px; text-transform:none; letter-spacing:0; font-size:0.86rem; color:var(--ivory); margin:4px 0 0; cursor:pointer;">
-        <input type="checkbox" id="fSendWa" checked style="width:auto;"> Ao salvar uma mudança de situação, abrir o WhatsApp com a mensagem pronta para o cliente
-      </label>
       <h3 style="margin:20px 0 10px; font-size:1.02rem;">Itens (${qty} peça(s))</h3>
       <table class="order-items-table">
         ${order.items.map((i,idx)=>{
@@ -1102,19 +1095,11 @@ function openOrderModal(order){
       <button class="btn danger" id="mDeleteOrder" style="margin-right:auto;">Excluir pedido</button>
       <button class="btn danger" id="mCancelOrder" ${order.status==='cancelled'?'disabled':''}>Cancelar pedido</button>
       <button class="btn" id="mClose2">Fechar</button>
-      <button class="btn" id="mSendWa">Enviar WhatsApp</button>
       <button class="btn primary" id="mSave">Salvar andamento</button>
     </footer>
   `, 'wide');
   document.getElementById('mClose').addEventListener('click', closeModal);
   document.getElementById('mClose2').addEventListener('click', closeModal);
-  document.getElementById('mSendWa').addEventListener('click', ()=>{
-    const st = document.getElementById('fStatus').value;
-    const fresh = S.getOrders().find(o=>o.id===order.id) || order;
-    if(!openOrderWhatsApp(fresh, ['paid','preparing','shipped','fulfilled'].includes(st) ? st : fresh.status)){
-      alert('Não há mensagem pronta para esta situação ou o pedido não tem WhatsApp. Se o navegador bloqueou a janela, permita pop-ups para este site.');
-    }
-  });
   document.getElementById('mDeleteOrder').addEventListener('click', ()=>{
     const current = S.getOrders().find(o=>o.id===order.id) || order;
     const willReturn = orderStockDeducted(current) && current.status !== 'cancelled' && (current.items||[]).length > 0;
@@ -1163,11 +1148,6 @@ function openOrderModal(order){
     }
     const prevStatus = (S.getOrders().find(o=>o.id===order.id) || order).status;
     updateOrderStatus(order, status, pay, `Andamento atualizado para "${S.orderStatusLabel(status)}".`);
-    const sendWa = document.getElementById('fSendWa');
-    if(sendWa && sendWa.checked && status !== prevStatus){
-      const fresh = S.getOrders().find(o=>o.id===order.id);
-      if(fresh) openOrderWhatsApp(fresh, status);
-    }
     closeModal(); renderView();
   });
 }
