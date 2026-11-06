@@ -1046,7 +1046,7 @@ function openOrderModal(order){
     <header><div><span class="eyebrow">PEDIDO ${order.id}</span><h3>${escapeHtml(order.customerName)}</h3></div><button class="close" id="mClose">×</button></header>
     <div class="modal-body">
       <div class="grid2">
-        <div class="field"><label>WhatsApp</label><input value="${escapeAttr(order.customerPhone)}" disabled></div>
+        <div class="field"><label>WhatsApp</label><input id="fOrderPhone" value="${escapeAttr(order.customerPhone)}" placeholder="(00) 00000-0000"><div class="field-hint">Se alterar, o número muda em todos os pedidos deste cliente.</div></div>
         <div class="field"><label>Data Do Pedido</label><input value="${new Date(order.createdAt).toLocaleString('pt-BR')}" disabled></div>
         <div class="field wide"><label>Endereço De Entrega</label><textarea rows="2" disabled>${escapeHtml(addressText(order.address) || 'Endereço não informado (pedido sem endereço)')}</textarea>${addressText(order.address) ? `<a href="${mapsLink(addressText(order.address))}" target="_blank" rel="noreferrer" style="font-size:0.8rem; color:var(--gold-bright);">Abrir no mapa</a>` : ''}</div>
         <div class="field"><label>Situação Do Pedido</label>
@@ -1136,6 +1136,12 @@ function openOrderModal(order){
   document.getElementById('mSave').addEventListener('click', ()=>{
     const status = document.getElementById('fStatus').value;
     const pay = document.getElementById('fPay').value;
+    const newPhone = document.getElementById('fOrderPhone').value.trim();
+    if(!newPhone){ alert('O WhatsApp do cliente não pode ficar vazio.'); return; }
+    if(newPhone !== String(order.customerPhone||'').trim()){
+      changeCustomerPhone(order.customerPhone, newPhone, session.name);
+      order = S.getOrders().find(o=>o.id===order.id) || order;
+    }
     // tamanhos corrigidos pelo gestor
     const allOrders = S.getOrders();
     const oi = allOrders.findIndex(o=>o.id===order.id);
@@ -1258,6 +1264,36 @@ function updateOrderStatus(order, status, paymentMethod, label){
 
   S.saveOrders(orders);
   S.addAudit('order_update', `Pedido ${order.id}: ${label}`, session.name);
+}
+
+/* Troca o número de um cliente em tudo: cadastro do cliente + todos os pedidos dele.
+   Se o número novo já pertence a outro cliente cadastrado, os dois cadastros viram um só. */
+function changeCustomerPhone(oldPhone, newPhone, who){
+  oldPhone = String(oldPhone||'').trim(); newPhone = String(newPhone||'').trim();
+  if(!newPhone || newPhone === oldPhone) return { changed:false };
+  const orders = S.getOrders();
+  let n = 0;
+  orders.forEach(o=>{
+    if(String(o.customerPhone||'').trim() === oldPhone){
+      o.customerPhone = newPhone; n++;
+      o.events = o.events || [];
+      o.events.unshift({ id:S.uid('ev'), label:`Número do cliente alterado: ${oldPhone} → ${newPhone}`, actor:who, createdAt:S.nowISO() });
+    }
+  });
+  if(n) S.saveOrders(orders);
+  const custs = S.getCustomers();
+  const mine = custs.find(c=>String(c.phone||'').trim() === oldPhone);
+  const other = custs.find(c=>c !== mine && String(c.phone||'').trim() === newPhone);
+  if(mine && other){
+    if(!addrHasData(other.address) && addrHasData(mine.address)) other.address = mine.address;
+    other.orders = (other.orders||[]).concat((mine.orders||[]).filter(x=>!(other.orders||[]).some(y=>y.id===x.id)));
+    S.saveCustomers(custs.filter(c=>c !== mine));
+  } else if(mine){
+    mine.phone = newPhone;
+    S.saveCustomers(custs);
+  }
+  S.addAudit('customer_phone', `Número alterado: ${oldPhone} → ${newPhone} (${n} pedido(s)).`, who);
+  return { changed:true, orders:n };
 }
 
 let manualOrderDraft = null;
@@ -1514,6 +1550,10 @@ function renderCustomerRows(enriched){
     draftBtn.addEventListener('click', ()=>{
       const notes = document.getElementById('custNotes').value;
       const nextContact = document.getElementById('custNextContact').value;
+      const phoneEl = document.getElementById('custPhone');
+      const newPhone = phoneEl ? phoneEl.value.trim() : '';
+      if(phoneEl && !newPhone){ alert('O WhatsApp do cliente não pode ficar vazio.'); return; }
+      const oldPhone = c.phone;
       const customers = S.getCustomers();
       const idx = customers.findIndex(x=>x.id===c.id);
       if(idx>=0){
@@ -1521,6 +1561,10 @@ function renderCustomerRows(enriched){
         customers[idx].nextContactAt = nextContact;
         S.saveCustomers(customers);
         S.addAudit('customer_update', `Relacionamento de ${c.name} atualizado.`, session.name);
+      }
+      if(phoneEl && newPhone !== String(oldPhone||'').trim()){
+        changeCustomerPhone(oldPhone, newPhone, session.name);
+        expandedCustomer = null;
       }
       renderView();
     });
@@ -1533,7 +1577,7 @@ function customerDetailHTML(c){
       <section>
         <p class="eyebrow" style="margin-bottom:10px;">CONTATO</p>
         <dl>
-          <dt>WhatsApp</dt><dd>${escapeHtml(c.phone)}</dd>
+          <dt>WhatsApp</dt><dd><input id="custPhone" value="${escapeAttr(c.phone)}" style="max-width:220px;"></dd>
           <dt>Endereço</dt><dd>${escapeHtml(addressText(c.address) || 'Não informado')}${addressText(c.address) ? ` · <a href="${mapsLink(addressText(c.address))}" target="_blank" rel="noreferrer">mapa</a>` : ''}</dd>
           <dt>Cliente desde</dt><dd>${new Date(c.createdAt).toLocaleDateString('pt-BR')}</dd>
           <dt>Classificação</dt><dd>${c.classification}</dd>
