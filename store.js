@@ -231,7 +231,7 @@
     writePending(still);
     if(still.length) setTimeout(flushPending, 15000);
   }
-  async function pushMerge(target, items, removed, stock){
+  async function pushMerge(target, items, removed, stock, keep){
     if(!isSyncConfigured()) return;
     if(!(items && items.length) && !(removed && removed.length) && !(stock && stock.length)) return;
     if(target === 'orders' && items && items.length === 1 && stock && stock.length) queuePending(items[0], stock);
@@ -244,6 +244,7 @@
         items: JSON.stringify(items || []),
         removed: JSON.stringify(removed || []),
         stock: JSON.stringify(stock || []),
+        keep: JSON.stringify(keep || []),
       });
     }catch(err){
       console.warn('Just Grace: não foi possível sincronizar "' + target + '" com o servidor.', err);
@@ -340,9 +341,29 @@
     const sizes = normalizeSizes(product);
     let target = sizeLabel ? sizes.find(s => s.label === sizeLabel) : null;
     if(!target) target = sizes[0];
-    if(target) target.stock = Math.max(0, (target.stock || 0) + delta);
+    if(target){
+      target.stock = Math.max(0, (target.stock || 0) + delta);
+      // o servidor aplica a MESMA diferença (+/-) no estoque dele — assim uma venda feita por outra pessoa
+      // enquanto a gestão está aberta nunca é apagada por uma lista de estoque desatualizada.
+      stockOps.push({ id: product.id || '', name: product.name || '', size: target.label, delta: delta });
+      setTimeout(flushStockOps, 400);
+    }
     product.sizes = sizes;
     return product;
+  }
+  let stockOps = [];
+  function flushStockOps(){
+    if(!stockOps.length) return;
+    const ops = stockOps; stockOps = [];
+    if(!isSyncConfigured()) return;
+    const opId = 'op' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const send = () => sendMergeRequest({
+      token: SYNC_CONFIG.token, type: 'merge', action: 'stock', opId: opId, deltas: JSON.stringify(ops),
+    });
+    send();
+    // reenvios de segurança: o servidor reconhece o mesmo opId e nunca aplica duas vezes
+    setTimeout(send, 25000);
+    setTimeout(send, 90000);
   }
 
   function nextOrderId(orders){
@@ -474,7 +495,19 @@
 
     // produtos
     getProducts(){ return read(KEYS.products, []); },
-    saveProducts(list){ write(KEYS.products, list); pushProductsToServer(list); },
+    saveProducts(list, opts){
+      // envia só o que mudou (mesclagem) em vez de reescrever a lista inteira; o estoque dos produtos que
+      // só tiveram baixa/devolução segue por diferença (flushStockOps). Só quem teve o número de estoque
+      // digitado de propósito (absoluteStockFor) manda o estoque como valor exato.
+      const prev = read(KEYS.products, []);
+      write(KEYS.products, list);
+      if(!isSyncConfigured()){ stockOps = []; return; }
+      const d = diffList(prev, list);
+      const abs = (opts && opts.absoluteStockFor) || [];
+      const keep = d.changed.map(p => p.id).filter(id => abs.indexOf(id) === -1);
+      pushMerge('products', d.changed, d.removed, null, keep);
+      flushStockOps();
+    },
 
     // pedidos
     getOrders(){
